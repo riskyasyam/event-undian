@@ -7,6 +7,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
 import { getPesertaByEvent, getPesertaStats } from '@/services/peserta.service';
 import { errorResponse, successResponse } from '@/lib/utils';
+import { TipePeserta } from '@prisma/client';
 
 interface RouteParams {
   params: Promise<{
@@ -19,9 +20,11 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     await requireAuth();
 
     const { eventId } = await params;
+    const { searchParams } = new URL(request.url);
+    const tipe = searchParams.get('tipe') as TipePeserta | null;
     
-    const participants = await getPesertaByEvent(eventId);
-    const stats = await getPesertaStats(eventId);
+    const participants = await getPesertaByEvent(eventId, tipe || undefined);
+    const stats = await getPesertaStats(eventId, tipe || undefined);
 
     return NextResponse.json(
       successResponse({

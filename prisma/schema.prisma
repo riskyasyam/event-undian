@@ -37,6 +37,7 @@ model Peserta {
   nama          String
   nomor_telepon String
   alamat        String
+  tipe          TipePeserta @default(PESERTA)  // Type: PESERTA or JAMAAH
   token         String    @unique  // UUID for QR code
   qr_code_url   String?   // URL to generated QR code image
   status_hadir  Boolean   @default(false)  // Set true when scanned
@@ -82,6 +83,7 @@ model Hadiah {
   gambar_url       String?    // URL gambar hadiah
   jumlah_pemenang  Int        @default(1)  // Number of winners for this prize
   urutan           Int        @default(1)  // Order for displaying/drawing
+  tipe_peserta     TipePeserta @default(PESERTA)  // Prize type: for PESERTA or JAMAAH
   created_at       DateTime   @default(now())
   updated_at       DateTime   @updatedAt
   
@@ -119,4 +121,10 @@ model Admin {
   updated_at DateTime @updatedAt
   
   @@map("admins")
+}
+
+// Enum for Peserta type
+enum TipePeserta {
+  PESERTA
+  JAMAAH
 }

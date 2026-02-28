@@ -21,6 +21,7 @@ interface Hadiah {
   gambar_url?: string;
   jumlah_pemenang: number;
   urutan: number;
+  tipe_peserta?: string;
   winnersDrawn: number;
   remainingSlots: number;
   isComplete: boolean;
@@ -159,12 +160,14 @@ export default function UndiPage() {
     }
   };
 
-  const fetchEligibleParticipants = async () => {
+  const fetchEligibleParticipants = async (prize?: Hadiah) => {
     if (!selectedEvent) return;
 
     setLoadingParticipants(true);
     try {
-      const response = await fetch(`/api/peserta/event/${selectedEvent.id}`);
+      // Determine tipe based on prize, or fetch all if no prize specified
+      const tipeParam = prize ? `?tipe=${prize.tipe_peserta || 'PESERTA'}` : '';
+      const response = await fetch(`/api/peserta/event/${selectedEvent.id}${tipeParam}`);
       const data = await response.json();
 
       if (data.success) {
@@ -232,7 +235,7 @@ export default function UndiPage() {
     setRotation(0); // Reset rotation
     setMustSpin(false); // Reset spin state
     setSelectedWinnerIndex(null); // Reset winner index
-    await fetchEligibleParticipants();
+    await fetchEligibleParticipants(prize); // Pass prize to filter by type
     // Only show wheel after participants are fully loaded
     setTimeout(() => {
       setShowWheel(true);
@@ -404,10 +407,19 @@ export default function UndiPage() {
                   <h2 className="text-2xl font-bold text-yellow-500 mb-2">
                     {selectedPrizeForDraw.nama_hadiah}
                   </h2>
+                  <div className="flex justify-center mb-3">
+                    <span className={`px-3 py-1 text-xs font-medium rounded-full border ${
+                      selectedPrizeForDraw.tipe_peserta === 'JAMAAH' 
+                        ? 'bg-purple-500/10 text-purple-500 border-purple-500/20' 
+                        : 'bg-blue-500/10 text-blue-500 border-blue-500/20'
+                    }`}>
+                      Undian untuk: {selectedPrizeForDraw.tipe_peserta === 'JAMAAH' ? 'Jamaah' : 'Peserta Milad'}
+                    </span>
+                  </div>
                   <p className="text-gray-400 text-sm">
                     {loadingParticipants ? 'Memuat peserta...' : (
                       <>
-                        {totalEligible} peserta eligible
+                        {totalEligible} {selectedPrizeForDraw.tipe_peserta === 'JAMAAH' ? 'jamaah' : 'peserta'} eligible
                         {totalEligible > 50 && (
                           <span className="block mt-1 text-amber-400 text-xs">
                             Roda menampilkan sample 50 peserta. Sistem akan random dari semua {totalEligible} peserta eligible secara adil.
@@ -432,7 +444,12 @@ export default function UndiPage() {
                 {!loadingParticipants && participants.length === 0 && (
                   <div className="text-center py-20">
                     <div className="text-6xl mb-4">😔</div>
-                    <p className="text-gray-400 mb-6">Tidak ada peserta yang eligible untuk hadiah ini</p>
+                    <p className="text-gray-400 mb-2">
+                      Tidak ada {selectedPrizeForDraw?.tipe_peserta === 'JAMAAH' ? 'jamaah' : 'peserta'} yang eligible untuk hadiah ini
+                    </p>
+                    <p className="text-sm text-gray-500 mb-6">
+                      Pastikan {selectedPrizeForDraw?.tipe_peserta === 'JAMAAH' ? 'jamaah' : 'peserta'} sudah melakukan presensi
+                    </p>
                     <button
                       onClick={() => setShowWheel(false)}
                       className="px-6 py-3 bg-gray-700 hover:bg-gray-600 text-white font-semibold rounded-lg transition"
@@ -622,9 +639,18 @@ export default function UndiPage() {
                     
                     <div className="p-5">
                       <div className="flex justify-between items-start mb-4">
-                        <span className="px-3 py-1 bg-yellow-500/10 text-yellow-500 text-xs font-medium rounded-full border border-yellow-500/20">
-                          Hadiah #{prize.urutan}
-                        </span>
+                        <div className="flex gap-2">
+                          <span className="px-3 py-1 bg-yellow-500/10 text-yellow-500 text-xs font-medium rounded-full border border-yellow-500/20">
+                            Hadiah #{prize.urutan}
+                          </span>
+                          <span className={`px-3 py-1 text-xs font-medium rounded-full border ${
+                            prize.tipe_peserta === 'JAMAAH' 
+                              ? 'bg-purple-500/10 text-purple-500 border-purple-500/20' 
+                              : 'bg-blue-500/10 text-blue-500 border-blue-500/20'
+                          }`}>
+                            {prize.tipe_peserta === 'JAMAAH' ? 'Jamaah' : 'Peserta'}
+                          </span>
+                        </div>
                         {prize.isComplete ? (
                           <span className="px-3 py-1 bg-green-500/10 text-green-500 text-xs font-medium rounded-full border border-green-500/20">
                             Selesai ✓

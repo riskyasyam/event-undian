@@ -3,7 +3,7 @@
  */
 
 import { prisma } from '@/lib/prisma';
-import { Peserta, Prisma } from '@prisma/client';
+import { Peserta, Prisma, TipePeserta } from '@prisma/client';
 import { generateToken } from '@/lib/utils';
 
 // Type for Peserta with Event relation
@@ -18,6 +18,7 @@ export interface CreatePesertaInput {
   nama: string;
   nomor_telepon: string;
   alamat: string;
+  tipe?: TipePeserta;
 }
 
 export interface BulkCreatePesertaInput {
@@ -27,6 +28,7 @@ export interface BulkCreatePesertaInput {
     nomor_telepon: string;
     alamat: string;
   }>;
+  tipe?: TipePeserta;
 }
 
 /**
@@ -79,6 +81,7 @@ export async function bulkCreatePeserta(data: BulkCreatePesertaInput): Promise<n
         nama: participant.nama,
         nomor_telepon: participant.nomor_telepon,
         alamat: participant.alamat,
+        tipe: data.tipe || TipePeserta.PESERTA,
         kode_unik,
         token: generateToken(),
       },
@@ -93,9 +96,12 @@ export async function bulkCreatePeserta(data: BulkCreatePesertaInput): Promise<n
 /**
  * Get all participants for an event
  */
-export async function getPesertaByEvent(eventId: string): Promise<Peserta[]> {
+export async function getPesertaByEvent(eventId: string, tipe?: TipePeserta): Promise<Peserta[]> {
   return prisma.peserta.findMany({
-    where: { event_id: eventId },
+    where: { 
+      event_id: eventId,
+      ...(tipe && { tipe }),
+    },
     orderBy: { created_at: 'desc' },
   });
 }
@@ -166,12 +172,13 @@ export async function getAttendedPeserta(eventId: string): Promise<Peserta[]> {
 /**
  * Get eligible participants for lottery (attended and not won yet)
  */
-export async function getEligiblePeserta(eventId: string): Promise<Peserta[]> {
+export async function getEligiblePeserta(eventId: string, tipe?: TipePeserta): Promise<Peserta[]> {
   return prisma.peserta.findMany({
     where: {
       event_id: eventId,
       status_hadir: true,
       sudah_menang: false,
+      ...(tipe && { tipe }),
     },
   });
 }
@@ -201,15 +208,19 @@ export async function deletePeserta(id: string): Promise<Peserta> {
 /**
  * Get participant statistics for an event
  */
-export async function getPesertaStats(eventId: string) {
+export async function getPesertaStats(eventId: string, tipe?: TipePeserta) {
   const total = await prisma.peserta.count({
-    where: { event_id: eventId },
+    where: { 
+      event_id: eventId,
+      ...(tipe && { tipe }),
+    },
   });
 
   const attended = await prisma.peserta.count({
     where: {
       event_id: eventId,
       status_hadir: true,
+      ...(tipe && { tipe }),
     },
   });
 
@@ -217,6 +228,7 @@ export async function getPesertaStats(eventId: string) {
     where: {
       event_id: eventId,
       sudah_menang: true,
+      ...(tipe && { tipe }),
     },
   });
 
@@ -225,6 +237,7 @@ export async function getPesertaStats(eventId: string) {
       event_id: eventId,
       status_hadir: true,
       sudah_menang: false,
+      ...(tipe && { tipe }),
     },
   });
 

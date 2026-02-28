@@ -19,6 +19,7 @@ interface Hadiah {
   gambar_url?: string;
   jumlah_pemenang: number;
   urutan: number;
+  tipe_peserta: string;
   winnersDrawn: number;
   remainingSlots: number;
   isComplete: boolean;
@@ -115,6 +116,7 @@ export default function HadiahPage() {
           gambar_url: imageBase64 || null, // Use base64 image if uploaded
           jumlah_pemenang: parseInt(formData.get('jumlah_pemenang') as string),
           urutan: parseInt(formData.get('urutan') as string),
+          tipe_peserta: formData.get('tipe_peserta') || 'PESERTA',
         }),
       });
 
@@ -209,9 +211,18 @@ export default function HadiahPage() {
               <div className="p-5">
                 {/* Prize Order Badge */}
                 <div className="flex justify-between items-start mb-4">
-                  <span className="px-3 py-1 bg-yellow-500/10 text-yellow-500 text-xs font-medium rounded-full border border-yellow-500/20">
-                    Hadiah #{prize.urutan}
-                  </span>
+                  <div className="flex gap-2">
+                    <span className="px-3 py-1 bg-yellow-500/10 text-yellow-500 text-xs font-medium rounded-full border border-yellow-500/20">
+                      Hadiah #{prize.urutan}
+                    </span>
+                    <span className={`px-3 py-1 text-xs font-medium rounded-full border ${
+                      prize.tipe_peserta === 'JAMAAH' 
+                        ? 'bg-purple-500/10 text-purple-500 border-purple-500/20' 
+                        : 'bg-blue-500/10 text-blue-500 border-blue-500/20'
+                    }`}>
+                      {prize.tipe_peserta === 'JAMAAH' ? 'Jamaah' : 'Peserta'}
+                    </span>
+                  </div>
                   {prize.isComplete && (
                     <span className="px-3 py-1 bg-green-500/10 text-green-500 text-xs font-medium rounded-full border border-green-500/20">
                       Selesai ✓
@@ -288,6 +299,21 @@ export default function HadiahPage() {
                   className="w-full px-3 py-2 text-sm bg-[#0a0a0a] border border-yellow-500/20 text-yellow-500 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent placeholder-gray-500"
                   placeholder="Deskripsi hadiah..."
                 />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-400 mb-1.5">
+                  Tipe Peserta *
+                </label>
+                <select
+                  name="tipe_peserta"
+                  required
+                  defaultValue="PESERTA"
+                  className="w-full px-3 py-2 text-sm bg-[#0a0a0a] border border-yellow-500/20 text-yellow-500 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
+                >
+                  <option value="PESERTA">Peserta Milad</option>
+                  <option value="JAMAAH">Jamaah</option>
+                </select>
+                <p className="text-xs text-gray-500 mt-1">Pilih apakah hadiah untuk Peserta Milad atau Jamaah</p>
               </div>
               <div>
                 <label className="block text-xs font-medium text-gray-400 mb-1.5">

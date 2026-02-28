@@ -7,6 +7,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
 import { bulkCreatePeserta } from '@/services/peserta.service';
 import { errorResponse, successResponse } from '@/lib/utils';
+import { TipePeserta } from '@prisma/client';
 import * as XLSX from 'xlsx';
 
 export async function POST(request: NextRequest) {
@@ -16,6 +17,7 @@ export async function POST(request: NextRequest) {
     const formData = await request.formData();
     const file = formData.get('file') as File;
     const eventId = formData.get('event_id') as string;
+    const tipe = (formData.get('tipe') as string) || 'PESERTA';
 
     if (!file) {
       return NextResponse.json(
@@ -77,6 +79,7 @@ export async function POST(request: NextRequest) {
     const count = await bulkCreatePeserta({
       event_id: eventId,
       participants,
+      tipe: tipe as TipePeserta,
     });
 
     return NextResponse.json(

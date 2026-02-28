@@ -1,8 +1,8 @@
 'use client';
 
 /**
- * Admin Peserta Management Page - Gold & Black Theme
- * /admin/peserta
+ * Admin Jamaah Management Page - Gold & Black Theme
+ * /admin/jamaah
  */
 
 import { useEffect, useState } from 'react';
@@ -13,7 +13,7 @@ interface Event {
   nama_event: string;
 }
 
-interface Peserta {
+interface Jamaah {
   id: string;
   kode_unik: string;
   nama: string;
@@ -32,9 +32,9 @@ interface Stats {
   eligible: number;
 }
 
-export default function PesertaPage() {
+export default function JamaahPage() {
   const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
-  const [participants, setParticipants] = useState<Peserta[]>([]);
+  const [participants, setParticipants] = useState<Jamaah[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
@@ -70,7 +70,7 @@ export default function PesertaPage() {
     if (!selectedEvent) return;
 
     try {
-      const response = await fetch(`/api/peserta/event/${selectedEvent.id}?tipe=PESERTA`);
+      const response = await fetch(`/api/peserta/event/${selectedEvent.id}?tipe=JAMAAH`);
       const data = await response.json();
 
       if (data.success) {
@@ -99,7 +99,7 @@ export default function PesertaPage() {
       const formData = new FormData();
       formData.append('file', selectedFile);
       formData.append('event_id', selectedEvent.id);
-      formData.append('tipe', 'PESERTA');
+      formData.append('tipe', 'JAMAAH');
 
       const response = await fetch('/api/peserta/upload', {
         method: 'POST',
@@ -109,7 +109,7 @@ export default function PesertaPage() {
       const data = await response.json();
 
       if (data.success) {
-        alert(`Berhasil mengupload ${data.data.count} peserta`);
+        alert(`Berhasil mengupload ${data.data.count} jamaah`);
         setSelectedFile(null);
         fetchParticipants();
       } else {
@@ -123,14 +123,14 @@ export default function PesertaPage() {
     }
   };
 
-  const downloadQRCode = async (peserta: Peserta) => {
+  const downloadQRCode = async (jamaah: Jamaah) => {
     try {
       // Generate QR code if not exists
-      if (!peserta.qr_code_url) {
+      if (!jamaah.qr_code_url) {
         const response = await fetch('/api/qrcode/generate', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ peserta_id: peserta.id }),
+          body: JSON.stringify({ peserta_id: jamaah.id }),
         });
 
         const data = await response.json();
@@ -139,14 +139,14 @@ export default function PesertaPage() {
           return;
         }
 
-        peserta.qr_code_url = data.data.qr_code_url;
+        jamaah.qr_code_url = data.data.qr_code_url;
       }
 
       // Download QR code
-      if (peserta.qr_code_url) {
+      if (jamaah.qr_code_url) {
         const link = document.createElement('a');
-        link.href = peserta.qr_code_url;
-        link.download = `QR-${peserta.kode_unik}-${peserta.nama}.png`;
+        link.href = jamaah.qr_code_url;
+        link.download = `QR-${jamaah.kode_unik}-${jamaah.nama}.png`;
         link.click();
       }
     } catch (error) {
@@ -156,8 +156,8 @@ export default function PesertaPage() {
   };
 
   const downloadAllQRCodes = async () => {
-    for (const peserta of filteredParticipants) {
-      await downloadQRCode(peserta);
+    for (const jamaah of filteredParticipants) {
+      await downloadQRCode(jamaah);
       // Small delay to prevent overwhelming the browser
       await new Promise(resolve => setTimeout(resolve, 100));
     }
@@ -167,10 +167,10 @@ export default function PesertaPage() {
     if (!selectedEvent) return;
 
     try {
-      const response = await fetch(`/api/peserta/export/${selectedEvent.id}?tipe=PESERTA`);
+      const response = await fetch(`/api/peserta/export/${selectedEvent.id}?tipe=JAMAAH`);
       
       if (!response.ok) {
-        alert('Gagal export data peserta');
+        alert('Gagal export data jamaah');
         return;
       }
 
@@ -183,7 +183,7 @@ export default function PesertaPage() {
       // Get filename from response headers
       const contentDisposition = response.headers.get('content-disposition');
       const filenameMatch = contentDisposition?.match(/filename="(.+)"/);
-      const filename = filenameMatch ? filenameMatch[1] : `Peserta_Export_${new Date().toISOString().split('T')[0]}.xlsx`;
+      const filename = filenameMatch ? filenameMatch[1] : `Jamaah_Export_${new Date().toISOString().split('T')[0]}.xlsx`;
       
       link.download = filename;
       link.click();
@@ -192,7 +192,7 @@ export default function PesertaPage() {
       window.URL.revokeObjectURL(url);
     } catch (error) {
       console.error('Export error:', error);
-      alert('Gagal export data peserta');
+      alert('Gagal export data jamaah');
     }
   };
 
@@ -223,22 +223,22 @@ export default function PesertaPage() {
       {/* Header */}
       <div>
         <h1 className="text-3xl font-bold text-yellow-500">
-          Kelola Peserta
+          Kelola Jamaah
         </h1>
-        <p className="text-gray-400 text-sm mt-1">Manage event participants and QR codes</p>
+        <p className="text-gray-400 text-sm mt-1">Manage jamaah participants and QR codes</p>
       </div>
 
       {/* Stats Cards */}
       {stats && (
         <div className="bg-[#1a1a1a] rounded-lg p-6 border border-yellow-500/20 shadow-lg inline-block">
           <div className="text-5xl font-bold text-yellow-500 mb-2">{stats.total}</div>
-          <div className="text-sm text-gray-400">Total Peserta Terdaftar</div>
+          <div className="text-sm text-gray-400">Total Jamaah Terdaftar</div>
         </div>
       )}
 
       {/* Upload Section */}
       <div className="bg-[#1a1a1a] rounded-lg shadow-lg p-6 border border-yellow-500/20">
-        <h2 className="text-xl font-bold text-yellow-500 mb-4">Upload Peserta (Excel)</h2>
+        <h2 className="text-xl font-bold text-yellow-500 mb-4">Upload Jamaah (Excel)</h2>
         <div className="flex flex-col md:flex-row gap-4 items-end">
           <div className="flex-1">
             <label className="block text-sm font-medium text-gray-400 mb-2">
@@ -346,18 +346,18 @@ export default function PesertaPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-yellow-500/20">
-              {filteredParticipants.map((peserta) => (
-                <tr key={peserta.id} className="hover:bg-[#0a0a0a] transition">
-                  <td className="px-6 py-4 text-sm font-bold text-yellow-500">{peserta.kode_unik}</td>
-                  <td className="px-6 py-4 text-sm font-semibold text-white">{peserta.nama}</td>
-                  <td className="px-6 py-4 text-sm text-gray-300">{peserta.nomor_telepon}</td>
-                  <td className="px-6 py-4 text-sm text-gray-300">{peserta.alamat}</td>
+              {filteredParticipants.map((jamaah) => (
+                <tr key={jamaah.id} className="hover:bg-[#0a0a0a] transition">
+                  <td className="px-6 py-4 text-sm font-bold text-yellow-500">{jamaah.kode_unik}</td>
+                  <td className="px-6 py-4 text-sm font-semibold text-white">{jamaah.nama}</td>
+                  <td className="px-6 py-4 text-sm text-gray-300">{jamaah.nomor_telepon}</td>
+                  <td className="px-6 py-4 text-sm text-gray-300">{jamaah.alamat}</td>
                   <td className="px-6 py-4 text-center">
                     <button
-                      onClick={() => downloadQRCode(peserta)}
+                      onClick={() => downloadQRCode(jamaah)}
                       className="px-4 py-2 bg-yellow-500/10 text-yellow-500 text-sm font-semibold rounded-lg hover:bg-yellow-500/20 transition border border-yellow-500/20"
                     >
-                      {peserta.qr_code_url ? 'Download QR' : 'Generate QR'}
+                      {jamaah.qr_code_url ? 'Download QR' : 'Generate QR'}
                     </button>
                   </td>
                 </tr>
@@ -369,7 +369,7 @@ export default function PesertaPage() {
 
       {filteredParticipants.length === 0 && (
         <div className="text-center py-12 bg-[#1a1a1a] rounded-lg border border-yellow-500/20">
-          <p className="text-gray-400 text-lg">Tidak ada peserta ditemukan</p>
+          <p className="text-gray-400 text-lg">Tidak ada jamaah ditemukan</p>
         </div>
       )}
     </div>

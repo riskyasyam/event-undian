@@ -102,14 +102,21 @@ export async function drawLottery(input: DrawLotteryInput): Promise<DrawLotteryR
           throw new Error('Participant is not registered for this event');
         }
 
+        // Validate participant type matches prize type
+        if (peserta.tipe !== hadiah.tipe_peserta) {
+          throw new Error(`Participant type (${peserta.tipe}) does not match prize type (${hadiah.tipe_peserta})`);
+        }
+
         selectedWinners = [peserta];
       } else {
         // 2. Get eligible participants (attended and haven't won yet)
+        // Filter by hadiah's tipe_peserta
         const eligiblePeserta = await tx.peserta.findMany({
           where: {
             event_id: hadiah.event_id,
             status_hadir: true,
             sudah_menang: false,
+            tipe: hadiah.tipe_peserta,
           },
         });
 

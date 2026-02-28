@@ -7,6 +7,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
 import { errorResponse } from '@/lib/utils';
 import { prisma } from '@/lib/prisma';
+import { TipePeserta } from '@prisma/client';
 import * as XLSX from 'xlsx';
 
 interface RouteParams {
@@ -20,6 +21,8 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     await requireAuth();
 
     const { eventId } = await params;
+    const { searchParams } = new URL(request.url);
+    const tipe = searchParams.get('tipe') as TipePeserta | null;
     
     // Get event details
     const event = await prisma.event.findUnique({
@@ -35,13 +38,16 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
     // Get all participants for this event
     const participants = await prisma.peserta.findMany({
-      where: { event_id: eventId },
+      where: { 
+        event_id: eventId,
+        ...(tipe && { tipe }),
+      },
       orderBy: { kode_unik: 'asc' },
     });
 
     if (participants.length === 0) {
       return NextResponse.json(
-        errorResponse('Tidak ada peserta untuk di-export'),
+        errorResponse(`Tidak ada ${tipe === 'JAMAAH' ? 'jamaah' : 'peserta'} untuk di-export`),
         { status: 404 }
       );
     }
@@ -57,13 +63,14 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       'Nama': p.nama,
       'Nomor Telepon': p.nomor_telepon,
       'Alamat': p.alamat,
+      'Tipe': p.tipe,
       'URL Download QR Code': `${baseUrl}/api/qrcode/${p.kode_unik}`,
     }));
 
     // Create workbook and worksheet
     const worksheet = XLSX.utils.json_to_sheet(exportData);
     const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, 'Data Peserta');
+    XLSX.utils.book_append_sheet(workbook, worksheet, tipe === 'JAMAAH' ? 'Data Jamaah' : 'Data Peserta');
 
     // Set column widths for better readability
     worksheet['!cols'] = [
@@ -72,6 +79,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       { wch: 30 }, // Nama
       { wch: 15 }, // Nomor Telepon
       { wch: 40 }, // Alamat
+      { wch: 10 }, // Tipe
       { wch: 50 }, // URL Download QR Code
     ];
 
@@ -83,7 +91,8 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
     // Create filename with event name and date
     const dateStr = new Date().toISOString().split('T')[0];
-    const filename = `Peserta_${event.nama_event.replace(/\s+/g, '_')}_${dateStr}.xlsx`;
+    const label = tipe === 'JAMAAH' ? 'Jamaah' : 'Peserta';
+    const filename = `${label}_${event.nama_event.replace(/\s+/g, '_')}_${dateStr}.xlsx`;
 
     // Return as downloadable file
     return new NextResponse(buffer, {
