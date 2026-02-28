@@ -1,0 +1,122 @@
+// Prisma schema for MU Travel Milad Event QR Attendance & Lottery System
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// Event model - Manages multiple events
+model Event {
+  id           String     @id @default(uuid())
+  nama_event   String
+  tanggal      DateTime
+  lokasi       String
+  deskripsi    String?
+  waktu_undian DateTime?  // Waktu undian akan dibuka
+  aktif        Boolean    @default(true)
+  created_at   DateTime   @default(now())
+  updated_at   DateTime   @updatedAt
+  
+  // Relations
+  peserta      Peserta[]
+  hadiah       Hadiah[]
+  
+  @@map("events")
+}
+
+// Peserta model - Event participants with QR attendance tracking
+model Peserta {
+  id            String    @id @default(uuid())
+  event_id      String
+  kode_unik     String    @unique  // MU-001, MU-002, etc.
+  nama          String
+  nomor_telepon String
+  alamat        String
+  token         String    @unique  // UUID for QR code
+  qr_code_url   String?   // URL to generated QR code image
+  status_hadir  Boolean   @default(false)  // Set true when scanned
+  sudah_menang  Boolean   @default(false)  // Set true when becomes winner
+  created_at    DateTime  @default(now())
+  updated_at    DateTime  @updatedAt
+  
+  // Relations
+  event         Event     @relation(fields: [event_id], references: [id], onDelete: Cascade)
+  pemenang      Pemenang?
+  presensi      Presensi[]
+  
+  @@index([event_id])
+  @@index([kode_unik])
+  @@index([token])
+  @@index([status_hadir, sudah_menang])  // Composite index for lottery query
+  @@map("peserta")
+}
+
+// Presensi model - Attendance records
+model Presensi {
+  id           String   @id @default(uuid())
+  peserta_id   String
+  event_id     String
+  waktu_hadir  DateTime @default(now())
+  metode       String   @default("manual") // "manual" or "qrcode"
+  created_at   DateTime @default(now())
+  
+  // Relations
+  peserta      Peserta  @relation(fields: [peserta_id], references: [id], onDelete: Cascade)
+  
+  @@index([peserta_id])
+  @@index([event_id])
+  @@map("presensi")
+}
+
+// Hadiah model - Prizes for lottery
+model Hadiah {
+  id               String     @id @default(uuid())
+  event_id         String
+  nama_hadiah      String
+  deskripsi        String?
+  gambar_url       String?    // URL gambar hadiah
+  jumlah_pemenang  Int        @default(1)  // Number of winners for this prize
+  urutan           Int        @default(1)  // Order for displaying/drawing
+  created_at       DateTime   @default(now())
+  updated_at       DateTime   @updatedAt
+  
+  // Relations
+  event            Event      @relation(fields: [event_id], references: [id], onDelete: Cascade)
+  pemenang         Pemenang[]
+  
+  @@index([event_id])
+  @@map("hadiah")
+}
+
+// Pemenang model - Winners of lottery
+model Pemenang {
+  id           String   @id @default(uuid())
+  peserta_id   String   @unique  // One person can only win once
+  hadiah_id    String
+  drawn_at     DateTime @default(now())  // When the lottery was drawn
+  created_at   DateTime @default(now())
+  
+  // Relations
+  peserta      Peserta  @relation(fields: [peserta_id], references: [id], onDelete: Cascade)
+  hadiah       Hadiah   @relation(fields: [hadiah_id], references: [id], onDelete: Cascade)
+  
+  @@index([hadiah_id])
+  @@map("pemenang")
+}
+
+// Admin model - For admin authentication
+model Admin {
+  id         String   @id @default(uuid())
+  username   String   @unique
+  password   String   // Hashed with bcrypt
+  nama       String
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+  
+  @@map("admins")
+}
