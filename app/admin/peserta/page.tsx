@@ -162,6 +162,39 @@ export default function PesertaPage() {
     }
   };
 
+  const exportParticipantData = async () => {
+    if (!selectedEvent) return;
+
+    try {
+      const response = await fetch(`/api/peserta/export/${selectedEvent.id}`);
+      
+      if (!response.ok) {
+        alert('Gagal export data peserta');
+        return;
+      }
+
+      // Get the blob and create download link
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      
+      // Get filename from response headers
+      const contentDisposition = response.headers.get('content-disposition');
+      const filenameMatch = contentDisposition?.match(/filename="(.+)"/);
+      const filename = filenameMatch ? filenameMatch[1] : `Peserta_Export_${new Date().toISOString().split('T')[0]}.xlsx`;
+      
+      link.download = filename;
+      link.click();
+      
+      // Cleanup
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Export error:', error);
+      alert('Gagal export data peserta');
+    }
+  };
+
   const filteredParticipants = participants
     .filter(p => {
       if (filter === 'attended') return p.status_hadir;
@@ -282,7 +315,13 @@ export default function PesertaPage() {
 
       {/* Bulk Actions */}
       {filteredParticipants.length > 0 && (
-        <div className="flex justify-end">
+        <div className="flex justify-end gap-3">
+          <button
+            onClick={exportParticipantData}
+            className="px-6 py-3 bg-green-600 hover:bg-green-700 text-white font-semibold rounded-lg transition shadow-lg shadow-green-600/50"
+          >
+            Export Data Excel ({participants.length})
+          </button>
           <button
             onClick={downloadAllQRCodes}
             className="px-6 py-3 bg-yellow-500 hover:bg-yellow-600 text-black font-semibold rounded-lg transition shadow-lg shadow-yellow-500/50"

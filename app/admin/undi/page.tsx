@@ -6,14 +6,7 @@
  */
 
 import { useEffect, useState } from 'react';
-import dynamic from 'next/dynamic';
 import type confettiType from 'canvas-confetti';
-
-// Dynamic import to avoid SSR issues with window object
-const Wheel = dynamic(
-  () => import('react-custom-roulette').then((mod) => mod.Wheel),
-  { ssr: false }
-);
 
 interface Event {
   id: string;
@@ -71,6 +64,9 @@ export default function UndiPage() {
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [selectedPrizeForDraw, setSelectedPrizeForDraw] = useState<Hadiah | null>(null);
   const [loadingParticipants, setLoadingParticipants] = useState(false);
+  const [totalEligible, setTotalEligible] = useState(0);
+  const [rotation, setRotation] = useState(0);
+  const [selectedWinnerIndex, setSelectedWinnerIndex] = useState<number | null>(null);
 
   useEffect(() => {
     fetchMainEvent();
@@ -177,11 +173,22 @@ export default function UndiPage() {
           (p: Participant & { status_hadir: boolean; sudah_menang: boolean }) => 
             p.status_hadir && !p.sudah_menang
         );
-        setParticipants(eligible);
+        
+        setTotalEligible(eligible.length);
+        
+        // Limit to 50 participants for smooth wheel animation
+        // If more than 50, randomly sample 50
+        let finalParticipants = eligible;
+        if (eligible.length > 50) {
+          finalParticipants = [...eligible].sort(() => Math.random() - 0.5).slice(0, 50);
+        }
+        
+        setParticipants(finalParticipants);
       }
     } catch (error) {
       console.error('Failed to fetch participants:', error);
       setParticipants([]);
+      setTotalEligible(0);
     } finally {
       setLoadingParticipants(false);
     }
@@ -222,6 +229,9 @@ export default function UndiPage() {
   const handleOpenWheel = async (prize: Hadiah) => {
     setSelectedPrizeForDraw(prize);
     setParticipants([]); // Reset participants first
+    setRotation(0); // Reset rotation
+    setMustSpin(false); // Reset spin state
+    setSelectedWinnerIndex(null); // Reset winner index
     await fetchEligibleParticipants();
     // Only show wheel after participants are fully loaded
     setTimeout(() => {
@@ -236,25 +246,67 @@ export default function UndiPage() {
     }
 
     const newPrizeNumber = Math.floor(Math.random() * participants.length);
+    setSelectedWinnerIndex(newPrizeNumber); // Save winner index
     setPrizeNumber(newPrizeNumber);
     setMustSpin(true);
+
+    // Calculate rotation
+    // Pointer is at top. Segments start from -90° (top) going clockwise.
+    // To rotate segment i to align its middle with pointer:
+    const segmentAngle = 360 / participants.length;
+    const rotationToAlignWinner = -(newPrizeNumber + 0.5) * segmentAngle;
+    
+    // Add 5 full rotations (1800°) for dramatic spinning
+    const finalRotation = 1800 + rotationToAlignWinner;
+    
+    console.log('🎯 Winner Index:', newPrizeNumber, 'Name:', participants[newPrizeNumber]?.nama);
+    console.log('📐 Segment Angle:', segmentAngle.toFixed(2), '° - Final Rotation:', finalRotation.toFixed(2), '°');
+    
+    setRotation(finalRotation);
+
+    // Auto stop after animation completes
+    setTimeout(() => {
+      setMustSpin(false);
+      // Wait a moment then process the winner
+      setTimeout(() => {
+        handleStopSpinning();
+      }, 500);
+    }, 5000);
   };
 
   const handleStopSpinning = async () => {
-    setMustSpin(false);
     setDrawing(true);
 
-    // Get the winner from wheel
-    const winner = participants[prizeNumber];
+    // Use selectedWinnerIndex to get the correct winner
+    if (selectedWinnerIndex === null || selectedWinnerIndex < 0 || selectedWinnerIndex >= participants.length) {
+      alert('Error: Index pemenang tidak valid!');
+      setDrawing(false);
+      setMustSpin(false);
+      return;
+    }
+    
+    const selectedWinner = participants[selectedWinnerIndex];
+    
+    console.log('🏆 Processing winner from index:', selectedWinnerIndex, '-', selectedWinner?.nama);
+
+    if (!selectedWinner) {
+      alert('Error: Pemenang tidak ditemukan!');
+      setDrawing(false);
+      setMustSpin(false);
+      return;
+    }
 
     try {
+      // If total eligible > 50, use server-side random for fairness
+      // Otherwise, use the selected participant from wheel
+      const requestBody = totalEligible > 50 
+        ? { hadiah_id: selectedPrizeForDraw?.id }
+        : { hadiah_id: selectedPrizeForDraw?.id, peserta_id: selectedWinner.id };
+
       const response = await fetch('/api/lottery/draw', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          hadiah_id: selectedPrizeForDraw?.id,
-          peserta_id: winner.id 
-        }),
+        body: JSON.stringify(requestBody),
       });
 
       const data = await response.json();
@@ -263,9 +315,26 @@ export default function UndiPage() {
         // Trigger confetti
         triggerConfetti();
 
+        // Transform winners data to match expected format
+        const transformedWinners = data.data.winners.map((w: any) => ({
+          id: w.pemenang?.id || w.id,
+          drawn_at: w.pemenang?.drawn_at || new Date(),
+          peserta: {
+            id: w.id,
+            nama: w.nama,
+            email: w.email,
+            nomor_telepon: w.nomor_telepon
+          },
+          hadiah: {
+            nama_hadiah: selectedPrizeForDraw?.nama_hadiah || ''
+          }
+        }));
+
+        console.log('✅ Winners saved:', transformedWinners.map((w: any) => w.peserta.nama).join(', '));
+
         // Show winner announcement
         setTimeout(() => {
-          setNewWinners(data.data.winners);
+          setNewWinners(transformedWinners);
           setShowWheel(false);
           setDrawing(false);
           fetchPrizes();
@@ -278,11 +347,13 @@ export default function UndiPage() {
       } else {
         alert(`Gagal mengundi: ${data.error}`);
         setDrawing(false);
+        setMustSpin(false);
       }
     } catch (error) {
       console.error('Draw error:', error);
       alert('Gagal mengundi');
       setDrawing(false);
+      setMustSpin(false);
     }
   };
 
@@ -319,22 +390,31 @@ export default function UndiPage() {
 
           {/* Wheel Modal */}
           {showWheel && selectedPrizeForDraw && (
-            <div className="fixed inset-0 bg-black/95 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-              <div className="max-w-3xl w-full bg-[#1a1a1a] rounded-2xl shadow-2xl border border-yellow-500/20 p-8">
+            <div className="fixed inset-0 bg-black/95 backdrop-blur-sm flex items-center justify-center z-50 p-4 overflow-y-auto">
+              <div className="max-w-2xl w-full bg-[#1a1a1a] rounded-2xl shadow-2xl border border-yellow-500/20 p-6 my-8 max-h-[90vh] overflow-y-auto">
                 {/* Prize Info */}
-                <div className="text-center mb-8">
+                <div className="text-center mb-6">
                   {selectedPrizeForDraw.gambar_url && (
                     <img 
                       src={selectedPrizeForDraw.gambar_url} 
                       alt={selectedPrizeForDraw.nama_hadiah}
-                      className="w-32 h-32 object-cover rounded-lg mx-auto mb-4 border-2 border-yellow-500"
+                      className="w-24 h-24 object-cover rounded-lg mx-auto mb-3 border-2 border-yellow-500"
                     />
                   )}
-                  <h2 className="text-3xl font-bold text-yellow-500 mb-2">
+                  <h2 className="text-2xl font-bold text-yellow-500 mb-2">
                     {selectedPrizeForDraw.nama_hadiah}
                   </h2>
                   <p className="text-gray-400 text-sm">
-                    {loadingParticipants ? 'Memuat peserta...' : `${participants.length} peserta eligible untuk hadiah ini`}
+                    {loadingParticipants ? 'Memuat peserta...' : (
+                      <>
+                        {totalEligible} peserta eligible
+                        {totalEligible > 50 && (
+                          <span className="block mt-1 text-amber-400 text-xs">
+                            Roda menampilkan sample 50 peserta. Sistem akan random dari semua {totalEligible} peserta eligible secara adil.
+                          </span>
+                        )}
+                      </>
+                    )}
                   </p>
                 </div>
 
@@ -365,46 +445,125 @@ export default function UndiPage() {
                 {/* Wheel - Only show if participants are loaded and available */}
                 {!loadingParticipants && participants.length > 0 && (
                   <>
-                    <div className="flex justify-center mb-8">
-                      <Wheel
-                        mustStartSpinning={mustSpin}
-                        prizeNumber={prizeNumber}
-                        data={participants.map((p) => ({
-                          option: p.nama,
-                          style: { 
-                            backgroundColor: '#fbbf24',
-                            textColor: '#000'
-                          }
-                        }))}
-                        onStopSpinning={handleStopSpinning}
-                        backgroundColors={['#fbbf24', '#f59e0b', '#d97706']}
-                        textColors={['#000']}
-                        outerBorderColor='#fbbf24'
-                        outerBorderWidth={5}
-                        innerBorderColor='#f59e0b'
-                        innerBorderWidth={3}
-                        radiusLineColor='#000'
-                        radiusLineWidth={1}
-                        fontSize={14}
-                      />
+                    {/* Circular Spinning Wheel */}
+                    <div className="flex justify-center mb-6">
+                      <div className="relative w-full max-w-[350px] aspect-square mx-auto">
+                        {/* Pointer at top */}
+                        <div className="absolute top-2 left-1/2 -translate-x-1/2 z-20">
+                          <div className="w-0 h-0 border-l-[20px] border-l-transparent border-r-[20px] border-r-transparent border-t-[30px] border-t-red-600 drop-shadow-2xl"></div>
+                        </div>
+
+                        {/* Wheel SVG */}
+                        <svg 
+                          viewBox="0 0 500 500" 
+                          className="w-full h-full drop-shadow-2xl"
+                          style={{
+                            transform: `rotate(${rotation}deg)`,
+                            transition: mustSpin ? 'transform 5s cubic-bezier(0.17, 0.67, 0.12, 0.99)' : 'none'
+                          }}
+                        >
+                          {/* Outer circle border */}
+                          <circle cx="250" cy="250" r="248" fill="none" stroke="#fbbf24" strokeWidth="4" />
+                          
+                          {participants.map((participant, index) => {
+                            const segmentAngle = 360 / participants.length;
+                            const startAngle = (index * segmentAngle - 90) * (Math.PI / 180);
+                            const endAngle = ((index + 1) * segmentAngle - 90) * (Math.PI / 180);
+                            
+                            const x1 = 250 + 245 * Math.cos(startAngle);
+                            const y1 = 250 + 245 * Math.sin(startAngle);
+                            const x2 = 250 + 245 * Math.cos(endAngle);
+                            const y2 = 250 + 245 * Math.sin(endAngle);
+
+                            const colors = ['#fbbf24', '#f59e0b', '#d97706'];
+                            const isWinner = index === selectedWinnerIndex && !mustSpin;
+                            const color = isWinner ? '#10b981' : colors[index % colors.length]; // Green if winner
+
+                            const largeArcFlag = segmentAngle > 180 ? 1 : 0;
+                            const pathData = `M 250 250 L ${x1} ${y1} A 245 245 0 ${largeArcFlag} 1 ${x2} ${y2} Z`;
+
+                            // Text position (middle of segment)
+                            const textAngle = ((index + 0.5) * segmentAngle - 90) * (Math.PI / 180);
+                            const textRadius = 170;
+                            const textX = 250 + textRadius * Math.cos(textAngle);
+                            const textY = 250 + textRadius * Math.sin(textAngle);
+                            const textRotation = (index + 0.5) * segmentAngle;
+
+                            return (
+                              <g key={participant.id}>
+                                {/* Segment */}
+                                <path d={pathData} fill={color} stroke="#000" strokeWidth={isWinner ? "3" : "1"} />
+                                
+                                {/* Text */}
+                                <text
+                                  x={textX}
+                                  y={textY}
+                                  fill="#000"
+                                  fontSize={isWinner ? "14" : "12"}
+                                  fontWeight="bold"
+                                  textAnchor="middle"
+                                  dominantBaseline="middle"
+                                  transform={`rotate(${textRotation}, ${textX}, ${textY})`}
+                                >
+                                  {participant.nama.length > 15 ? participant.nama.substring(0, 15) + '...' : participant.nama}
+                                </text>
+                              </g>
+                            );
+                          })}
+
+                          {/* Center circle */}
+                          <circle cx="250" cy="250" r="40" fill="#000" stroke="#fbbf24" strokeWidth="4" />
+                        </svg>
+
+                        {/* Center emoji (non-rotating) */}
+                        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-3xl pointer-events-none z-10">
+                          🎰
+                        </div>
+                      </div>
                     </div>
 
+                    {/* Winner Name Display (shown when not spinning) */}
+                    {!mustSpin && !drawing && selectedWinnerIndex !== null && participants[selectedWinnerIndex] && (
+                      <div className="bg-yellow-500/10 border-2 border-yellow-500 rounded-lg p-4 mb-6 text-center">
+                        <p className="text-sm text-gray-400 mb-1">Pemenang Terpilih:</p>
+                        <p className="text-2xl font-bold text-yellow-500">{participants[selectedWinnerIndex].nama}</p>
+                      </div>
+                    )}
+
                     {/* Actions */}
-                    <div className="flex gap-4 justify-center">
+                    <div className="flex gap-3 justify-center flex-wrap">
                       <button
-                        onClick={() => setShowWheel(false)}
+                        onClick={() => {
+                          setShowWheel(false);
+                          setRotation(0);
+                          setPrizeNumber(0);
+                        }}
                         disabled={mustSpin || drawing}
                         className="px-6 py-3 bg-gray-700 hover:bg-gray-600 text-white font-semibold rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         Tutup
                       </button>
-                      <button
-                        onClick={handleSpinWheel}
-                        disabled={mustSpin || drawing || participants.length === 0}
-                        className="px-8 py-3 bg-yellow-500 hover:bg-yellow-600 text-black font-bold rounded-lg transition shadow-lg shadow-yellow-500/50 disabled:opacity-50 disabled:cursor-not-allowed text-lg"
-                      >
-                        {drawing ? 'Menyimpan...' : mustSpin ? 'Berputar...' : '🎲 PUTAR RODA!'}
-                      </button>
+                      
+                      {/* Show spin button only when wheel is idle */}
+                      {!mustSpin && !drawing && (
+                        <button
+                          onClick={handleSpinWheel}
+                          disabled={participants.length === 0}
+                          className="px-8 py-3 bg-yellow-500 hover:bg-yellow-600 text-black font-bold rounded-lg transition shadow-lg shadow-yellow-500/50 disabled:opacity-50 disabled:cursor-not-allowed text-lg"
+                        >
+                          🎲 PUTAR RODA!
+                        </button>
+                      )}
+                      
+                      {/* Show confirming state when spinning or saving */}
+                      {(mustSpin || drawing) && (
+                        <button
+                          disabled
+                          className="px-8 py-3 bg-yellow-500/50 text-black font-bold rounded-lg text-lg cursor-not-allowed"
+                        >
+                          {drawing ? '💾 Menyimpan...' : '🔄 Berputar...'}
+                        </button>
+                      )}
                     </div>
                   </>
                 )}
@@ -428,8 +587,23 @@ export default function UndiPage() {
           )}
 
           {/* Prizes Section */}
-          {prizes.length > 0 && lotteryOpen && (
+          {prizes.length > 0 && (
             <div>
+              {/* Warning if lottery is not yet open */}
+              {!lotteryOpen && timeLeft && (
+                <div className="mb-4 bg-amber-500/10 border border-amber-500/20 rounded-lg p-4">
+                  <div className="flex items-center gap-3">
+                    <div className="text-2xl">⏰</div>
+                    <div>
+                      <p className="text-amber-500 font-semibold mb-1">Undian Belum Dibuka</p>
+                      <p className="text-sm text-gray-400">
+                        Waktu tersisa: {timeLeft.days}h {timeLeft.hours}j {timeLeft.minutes}m {timeLeft.seconds}d
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               <h2 className="text-2xl font-bold text-yellow-500 mb-4">Daftar Hadiah</h2>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {prizes.map((prize) => (
