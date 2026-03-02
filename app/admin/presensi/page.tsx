@@ -162,8 +162,8 @@ export default function PresensiPage() {
     if (!selectedEvent) return;
 
     try {
-      // Fetch all peserta for this event
-      const response = await fetch(`/api/peserta/event/${selectedEvent.id}`);
+      // Fetch all peserta for this event (PESERTA only, exclude JAMAAH)
+      const response = await fetch(`/api/peserta/event/${selectedEvent.id}?tipe=PESERTA`);
       const data = await response.json();
 
       if (!data.success) {

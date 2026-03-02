@@ -6,7 +6,6 @@
  */
 
 import { useEffect, useState } from 'react';
-import QRCode from 'qrcode';
 
 interface Event {
   id: string;
@@ -19,12 +18,9 @@ interface Jamaah {
   nama: string;
   nomor_telepon: string;
   alamat: string;
-  token: string;
-  qr_code_url?: string;
   status_hadir: boolean;
-  sudah_menang: boolean;  wa_status?: 'PENDING' | 'PROCESSING' | 'SENT' | 'FAILED';
-  wa_sent_at?: string;
-  wa_error?: string;}
+  sudah_menang: boolean;
+}
 
 interface Stats {
   total: number;
@@ -121,46 +117,6 @@ export default function JamaahPage() {
       alert('Upload gagal');
     } finally {
       setUploading(false);
-    }
-  };
-
-  const downloadQRCode = async (jamaah: Jamaah) => {
-    try {
-      // Generate QR code if not exists
-      if (!jamaah.qr_code_url) {
-        const response = await fetch('/api/qrcode/generate', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ peserta_id: jamaah.id }),
-        });
-
-        const data = await response.json();
-        if (!data.success) {
-          alert('Gagal generate QR code');
-          return;
-        }
-
-        jamaah.qr_code_url = data.data.qr_code_url;
-      }
-
-      // Download QR code
-      if (jamaah.qr_code_url) {
-        const link = document.createElement('a');
-        link.href = jamaah.qr_code_url;
-        link.download = `QR-${jamaah.kode_unik}-${jamaah.nama}.png`;
-        link.click();
-      }
-    } catch (error) {
-      console.error('QR generation error:', error);
-      alert('Gagal generate QR code');
-    }
-  };
-
-  const downloadAllQRCodes = async () => {
-    for (const jamaah of filteredParticipants) {
-      await downloadQRCode(jamaah);
-      // Small delay to prevent overwhelming the browser
-      await new Promise(resolve => setTimeout(resolve, 100));
     }
   };
 
@@ -324,12 +280,6 @@ export default function JamaahPage() {
           >
             Export Data Excel ({participants.length})
           </button>
-          <button
-            onClick={downloadAllQRCodes}
-            className="px-6 py-3 bg-yellow-500 hover:bg-yellow-600 text-black font-semibold rounded-lg transition shadow-lg shadow-yellow-500/50"
-          >
-            Download Semua QR ({filteredParticipants.length})
-          </button>
         </div>
       )}
 
@@ -343,8 +293,6 @@ export default function JamaahPage() {
                 <th className="px-6 py-4 text-left text-sm font-bold text-black uppercase">Nama</th>
                 <th className="px-6 py-4 text-left text-sm font-bold text-black uppercase">Telepon</th>
                 <th className="px-6 py-4 text-left text-sm font-bold text-black uppercase">Alamat</th>
-                <th className="px-6 py-4 text-center text-sm font-bold text-black uppercase">Status WA</th>
-                <th className="px-6 py-4 text-center text-sm font-bold text-black uppercase">QR Code</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-yellow-500/20">
@@ -354,37 +302,6 @@ export default function JamaahPage() {
                   <td className="px-6 py-4 text-sm font-semibold text-white">{jamaah.nama}</td>
                   <td className="px-6 py-4 text-sm text-gray-300">{jamaah.nomor_telepon}</td>
                   <td className="px-6 py-4 text-sm text-gray-300">{jamaah.alamat}</td>
-                  <td className="px-6 py-4 text-center">
-                    {!jamaah.wa_status || jamaah.wa_status === 'PENDING' ? (
-                      <span className="inline-block px-3 py-1 text-xs font-semibold rounded-full bg-yellow-500/20 text-yellow-400 border border-yellow-500/40">
-                        PENDING
-                      </span>
-                    ) : jamaah.wa_status === 'PROCESSING' ? (
-                      <span className="inline-block px-3 py-1 text-xs font-semibold rounded-full bg-blue-500/20 text-blue-400 border border-blue-500/40">
-                        PROCESSING
-                      </span>
-                    ) : jamaah.wa_status === 'SENT' ? (
-                      <span className="inline-block px-3 py-1 text-xs font-semibold rounded-full bg-green-500/20 text-green-400 border border-green-500/40" title={jamaah.wa_sent_at ? `Sent at: ${new Date(jamaah.wa_sent_at).toLocaleString('id-ID')}` : ''}>
-                        SENT ✓
-                      </span>
-                    ) : jamaah.wa_status === 'FAILED' ? (
-                      <span className="inline-block px-3 py-1 text-xs font-semibold rounded-full bg-red-500/20 text-red-400 border border-red-500/40" title={jamaah.wa_error || 'Unknown error'}>
-                        FAILED ✗
-                      </span>
-                    ) : (
-                      <span className="inline-block px-3 py-1 text-xs font-semibold rounded-full bg-gray-500/20 text-gray-400 border border-gray-500/40">
-                        N/A
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-6 py-4 text-center">
-                    <button
-                      onClick={() => downloadQRCode(jamaah)}
-                      className="px-4 py-2 bg-yellow-500/10 text-yellow-500 text-sm font-semibold rounded-lg hover:bg-yellow-500/20 transition border border-yellow-500/20"
-                    >
-                      {jamaah.qr_code_url ? 'Download QR' : 'Generate QR'}
-                    </button>
-                  </td>
                 </tr>
               ))}
             </tbody>

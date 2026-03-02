@@ -68,6 +68,7 @@ export default function UndiPage() {
   const [selectedWinner, setSelectedWinner] = useState<Participant | null>(null);
   const [showSuccess, setShowSuccess] = useState(false);
   const [lastWinner, setLastWinner] = useState<Participant | null>(null);
+  const [prizeRemainingSlots, setPrizeRemainingSlots] = useState<number>(0);
 
   useEffect(() => {
     fetchMainEvent();
@@ -171,16 +172,29 @@ export default function UndiPage() {
       const data = await response.json();
 
       if (data.success) {
-        // Filter only eligible participants (attended and not yet won)
-        const eligible = data.data.participants.filter(
-          (p: Participant & { status_hadir: boolean; sudah_menang: boolean }) => 
-            p.status_hadir && !p.sudah_menang
-        );
+        // Filter eligible participants berdasarkan tipe
+        const isJamaah = prize?.tipe_peserta === 'JAMAAH';
+        
+        let eligible;
+        if (isJamaah) {
+          // JAMAAH: Tidak perlu presensi, hanya belum menang
+          eligible = data.data.participants.filter(
+            (p: Participant & { status_hadir: boolean; sudah_menang: boolean }) => 
+              !p.sudah_menang
+          );
+        } else {
+          // PESERTA: Harus hadir DAN belum menang
+          eligible = data.data.participants.filter(
+            (p: Participant & { status_hadir: boolean; sudah_menang: boolean }) => 
+              p.status_hadir && !p.sudah_menang
+          );
+        }
         
         setTotalEligible(eligible.length);
         
-        // Limit to 50 participants for smooth wheel animation
-        // If more than 50, randomly sample 50
+        // Limit to 50 participants for smooth slot animation
+        // If more than 50, randomly sample 50 for display
+        // Winner will still be selected from displayed 50
         let finalParticipants = eligible;
         if (eligible.length > 50) {
           finalParticipants = [...eligible].sort(() => Math.random() - 0.5).slice(0, 50);
@@ -235,6 +249,7 @@ export default function UndiPage() {
     setSelectedWinner(null); // Reset winner
     setShowSuccess(false); // Reset success state
     setLastWinner(null); // Reset last winner
+    setPrizeRemainingSlots(prize.remainingSlots); // Set initial remaining slots
     await fetchEligibleParticipants(prize); // Pass prize to filter by type
     // Only show slot after participants are fully loaded
     setTimeout(() => {
@@ -246,14 +261,17 @@ export default function UndiPage() {
     setSelectedWinner(winner);
     setDrawing(true);
     
-    console.log('🏆 Processing winner:', winner.nama);
+    console.log('� Slot machine selected winner:', winner.nama, '| ID:', winner.id);
 
     try {
-      // If total eligible > 50, use server-side random for fairness
-      // Otherwise, use the selected participant from slot
-      const requestBody = totalEligible > 50 
-        ? { hadiah_id: selectedPrizeForDraw?.id }
-        : { hadiah_id: selectedPrizeForDraw?.id, peserta_id: winner.id };
+      // ALWAYS send peserta_id from slot machine winner
+      // Slot machine sudah pilih winner secara fair dari displayed participants
+      const requestBody = { 
+        hadiah_id: selectedPrizeForDraw?.id, 
+        peserta_id: winner.id 
+      };
+      
+      console.log('📤 Sending to API:', requestBody);
 
       const response = await fetch('/api/lottery/draw', {
         method: 'POST',
@@ -264,6 +282,8 @@ export default function UndiPage() {
       const data = await response.json();
 
       if (data.success) {
+        console.log('📥 API Response:', data.data.winners.map((w: any) => w.nama).join(', '));
+        
         // Trigger confetti
         triggerConfetti();
 
@@ -286,16 +306,21 @@ export default function UndiPage() {
 
         // Show success message in modal (JANGAN tutup modal)
         setTimeout(() => {
-          setLastWinner(transformedWinners[0]?.peserta || winner);
+          // Use actual winner from API response (bukan dari slot machine state)
+          setLastWinner(transformedWinners[0]?.peserta || null);
           setShowSuccess(true);
           setDrawing(false);
+          
+          // Update remainingSlots setelah undi
+          const newRemainingSlots = prizeRemainingSlots - transformedWinners.length;
+          setPrizeRemainingSlots(Math.max(0, newRemainingSlots));
           
           // Update prizes & winners list
           fetchPrizes();
           fetchWinners();
           
-          // Refresh participants untuk undi berikutnya
-          if (selectedPrizeForDraw) {
+          // Refresh participants untuk undi berikutnya (only if still have slots)
+          if (selectedPrizeForDraw && newRemainingSlots > 0) {
             fetchEligibleParticipants(selectedPrizeForDraw);
           }
         }, 1000);
@@ -316,7 +341,7 @@ export default function UndiPage() {
     setShowSuccess(false);
     setLastWinner(null);
     setSelectedWinner(null);
-    // Participants sudah di-refresh otomatis setelah undi
+    // Participants & prizeRemainingSlots sudah di-update otomatis setelah undi
   };
 
   const handleSelesaiUndi = () => {
@@ -326,6 +351,7 @@ export default function UndiPage() {
     setSelectedWinner(null);
     setParticipants([]);
     setSelectedPrizeForDraw(null);
+    setPrizeRemainingSlots(0);
   };
 
   return (
@@ -390,7 +416,7 @@ export default function UndiPage() {
                         {totalEligible} {selectedPrizeForDraw.tipe_peserta === 'JAMAAH' ? 'jamaah' : 'peserta'} eligible
                         {totalEligible > 50 && (
                           <span className="block mt-1 text-amber-400 text-xs">
-                            Slot menampilkan sample 50 peserta. Sistem akan random dari semua {totalEligible} peserta eligible secara adil.
+                            Slot menampilkan sample 50 {selectedPrizeForDraw.tipe_peserta === 'JAMAAH' ? 'jamaah' : 'peserta'}. Winner dipilih dari yang ditampilkan.
                           </span>
                         )}
                       </>
@@ -416,7 +442,10 @@ export default function UndiPage() {
                       Tidak ada {selectedPrizeForDraw?.tipe_peserta === 'JAMAAH' ? 'jamaah' : 'peserta'} yang eligible untuk hadiah ini
                     </p>
                     <p className="text-sm text-gray-500 mb-6">
-                      Pastikan {selectedPrizeForDraw?.tipe_peserta === 'JAMAAH' ? 'jamaah' : 'peserta'} sudah melakukan presensi
+                      {selectedPrizeForDraw?.tipe_peserta === 'JAMAAH' 
+                        ? 'Pastikan data jamaah sudah di-upload dan belum pernah menang'
+                        : 'Pastikan peserta sudah melakukan presensi dan belum pernah menang'
+                      }
                     </p>
                     <button
                       onClick={() => setShowSlot(false)}
@@ -445,12 +474,17 @@ export default function UndiPage() {
                             Menjadi pemenang {selectedPrizeForDraw?.nama_hadiah}!
                           </div>
                           
-                          {/* Info: sisa eligible */}
-                          {totalEligible > 0 && (
-                            <div className="text-sm text-gray-400 mb-6 bg-black/20 rounded-lg p-3">
-                              Sisa {totalEligible} {selectedPrizeForDraw?.tipe_peserta === 'JAMAAH' ? 'jamaah' : 'peserta'} eligible untuk hadiah ini
+                          {/* Info: sisa eligible dan slot */}
+                          <div className="grid grid-cols-2 gap-4 mb-6">
+                            <div className="text-sm text-gray-400 bg-black/20 rounded-lg p-3">
+                              <div className="text-xs mb-1">Sisa Peserta Eligible</div>
+                              <div className="text-2xl font-bold text-white">{totalEligible}</div>
                             </div>
-                          )}
+                            <div className="text-sm text-gray-400 bg-black/20 rounded-lg p-3">
+                              <div className="text-xs mb-1">Sisa Slot Hadiah</div>
+                              <div className="text-2xl font-bold text-yellow-500">{prizeRemainingSlots}</div>
+                            </div>
+                          </div>
                         </div>
                       </div>
                     )}
@@ -469,15 +503,19 @@ export default function UndiPage() {
                     <div className="flex gap-3 justify-center flex-wrap">
                       {showSuccess ? (
                         <>
-                          {/* Tombol Undi Lagi - hanya jika masih ada eligible */}
-                          {totalEligible > 0 && (
+                          {/* Tombol Undi Lagi - hanya jika masih ada slot DAN eligible */}
+                          {prizeRemainingSlots > 0 && totalEligible > 0 ? (
                             <button
                               onClick={handleUndiLagi}
                               disabled={drawing}
                               className="px-8 py-3 bg-yellow-500 hover:bg-yellow-600 text-black font-bold rounded-lg transition shadow-lg shadow-yellow-500/50 disabled:opacity-50 disabled:cursor-not-allowed"
                             >
-                              🎰 Undi Lagi
+                              🎰 Undi Lagi ({prizeRemainingSlots} slot tersisa)
                             </button>
+                          ) : (
+                            <div className="px-8 py-3 bg-green-500/10 border-2 border-green-500 text-green-500 font-bold rounded-lg">
+                              ✓ Semua Pemenang Sudah Terundi
+                            </div>
                           )}
                           
                           {/* Tombol Selesai */}

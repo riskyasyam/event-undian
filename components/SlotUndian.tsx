@@ -31,7 +31,8 @@ export default function SlotUndian({ peserta, onWinner }: SlotUndianProps) {
   const ITEM_HEIGHT = 60;
   const VISIBLE_ITEMS = 6;
   const CENTER_INDEX = 3;
-  const MIN_LOOPS = 20;
+  // Dynamic loops based on data size untuk optimize performance
+  const MIN_LOOPS = peserta.length > 50 ? 8 : peserta.length > 20 ? 10 : 12;
   const SPIN_DURATION = 4500; // 4.5 detik
 
   // Buat list panjang dengan looping data untuk animasi spin
@@ -46,7 +47,7 @@ export default function SlotUndian({ peserta, onWinner }: SlotUndianProps) {
     }
     
     return expanded;
-  }, [peserta]);
+  }, [peserta, MIN_LOOPS]);
 
   // Handle tombol Mulai Undian
   const handleSpin = () => {
@@ -118,6 +119,17 @@ export default function SlotUndian({ peserta, onWinner }: SlotUndianProps) {
     const centerPosition = CENTER_INDEX * ITEM_HEIGHT;
     const distanceFromCenter = itemPosition - centerPosition;
     const normalizedDistance = Math.abs(distanceFromCenter) / ITEM_HEIGHT;
+
+    // Skip calculation untuk items yang terlalu jauh (performance optimization)
+    if (normalizedDistance > 4) {
+      return {
+        transform: 'translateY(0px) rotateX(0deg) scale(0.7)',
+        opacity: 0.1,
+        filter: 'brightness(1)',
+        fontWeight: 400,
+        textShadow: 'none',
+      };
+    }
 
     // Scale: 1.2 di tengah, mengecil semakin jauh
     const scale = Math.max(0.7, 1.2 - normalizedDistance * 0.15);
@@ -194,6 +206,7 @@ export default function SlotUndian({ peserta, onWinner }: SlotUndianProps) {
               transformStyle: 'preserve-3d',
               transform: `translateY(-${displayOffset}px)`,
               transition: !isSpinning ? 'none' : 'none', // Controlled by JS animation
+              willChange: isSpinning ? 'transform' : 'auto', // GPU hint
             }}
           >
             {expandedList.map((participant, index) => (

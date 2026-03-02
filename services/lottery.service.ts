@@ -7,7 +7,9 @@
  * - Inconsistent database state
  * 
  * Lottery process:
- * 1. Get eligible participants (status_hadir = true, sudah_menang = false)
+ * 1. Get eligible participants:
+ *    - JAMAAH: sudah_menang = false (no presensi required)
+ *    - PESERTA: status_hadir = true AND sudah_menang = false
  * 2. Randomize server-side (NEVER on client)
  * 3. Select winners based on jumlah_pemenang
  * 4. Within transaction:
@@ -80,7 +82,7 @@ export async function drawLottery(input: DrawLotteryInput): Promise<DrawLotteryR
 
       let selectedWinners;
 
-      // If specific peserta_id provided (from wheel), use it
+      // If specific peserta_id provided (from slot), use it
       if (peserta_id) {
         const peserta = await tx.peserta.findUnique({
           where: { id: peserta_id },
@@ -90,7 +92,8 @@ export async function drawLottery(input: DrawLotteryInput): Promise<DrawLotteryR
           throw new Error('Participant not found');
         }
 
-        if (!peserta.status_hadir) {
+        // JAMAAH tidak perlu presensi, PESERTA perlu presensi
+        if (hadiah.tipe_peserta !== 'JAMAAH' && !peserta.status_hadir) {
           throw new Error('Participant has not attended the event');
         }
 
@@ -109,15 +112,22 @@ export async function drawLottery(input: DrawLotteryInput): Promise<DrawLotteryR
 
         selectedWinners = [peserta];
       } else {
-        // 2. Get eligible participants (attended and haven't won yet)
-        // Filter by hadiah's tipe_peserta
+        // 2. Get eligible participants
+        // JAMAAH: Tidak perlu status_hadir (no presensi requirement)
+        // PESERTA: Harus status_hadir = true DAN belum menang
+        const whereCondition: any = {
+          event_id: hadiah.event_id,
+          sudah_menang: false,
+          tipe: hadiah.tipe_peserta,
+        };
+        
+        // Hanya PESERTA yang perlu presensi
+        if (hadiah.tipe_peserta !== 'JAMAAH') {
+          whereCondition.status_hadir = true;
+        }
+        
         const eligiblePeserta = await tx.peserta.findMany({
-          where: {
-            event_id: hadiah.event_id,
-            status_hadir: true,
-            sudah_menang: false,
-            tipe: hadiah.tipe_peserta,
-          },
+          where: whereCondition,
         });
 
         // Check if enough eligible participants

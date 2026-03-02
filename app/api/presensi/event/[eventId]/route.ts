@@ -20,9 +20,14 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
     const { eventId } = await params;
 
-    // Get all presensi for the event
+    // Get all presensi for the event (PESERTA only, exclude JAMAAH)
     const presensiList = await prisma.presensi.findMany({
-      where: { event_id: eventId },
+      where: { 
+        event_id: eventId,
+        peserta: {
+          tipe: 'PESERTA'
+        }
+      },
       include: {
         peserta: {
           select: {
@@ -37,14 +42,18 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       orderBy: { waktu_hadir: 'desc' },
     });
 
-    // Get statistics
+    // Get statistics (PESERTA only, exclude JAMAAH)
     const totalPeserta = await prisma.peserta.count({
-      where: { event_id: eventId },
+      where: { 
+        event_id: eventId,
+        tipe: 'PESERTA'
+      },
     });
 
     const totalHadir = await prisma.peserta.count({
       where: {
         event_id: eventId,
+        tipe: 'PESERTA',
         status_hadir: true,
       },
     });
