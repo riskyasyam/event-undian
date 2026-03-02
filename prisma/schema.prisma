@@ -42,6 +42,9 @@ model Peserta {
   qr_code_url   String?   // URL to generated QR code image
   status_hadir  Boolean   @default(false)  // Set true when scanned
   sudah_menang  Boolean   @default(false)  // Set true when becomes winner
+  wa_status     WaStatus  @default(PENDING) // WhatsApp blast status
+  wa_sent_at    DateTime? // When WA was sent
+  wa_error      String?   // Error message if WA failed
   created_at    DateTime  @default(now())
   updated_at    DateTime  @updatedAt
   
@@ -127,4 +130,12 @@ model Admin {
 enum TipePeserta {
   PESERTA
   JAMAAH
+}
+
+// Enum for WhatsApp blast status
+enum WaStatus {
+  PENDING
+  PROCESSING
+  SENT
+  FAILED
 }

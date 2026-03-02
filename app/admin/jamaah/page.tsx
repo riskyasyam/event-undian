@@ -22,8 +22,9 @@ interface Jamaah {
   token: string;
   qr_code_url?: string;
   status_hadir: boolean;
-  sudah_menang: boolean;
-}
+  sudah_menang: boolean;  wa_status?: 'PENDING' | 'PROCESSING' | 'SENT' | 'FAILED';
+  wa_sent_at?: string;
+  wa_error?: string;}
 
 interface Stats {
   total: number;
@@ -342,6 +343,7 @@ export default function JamaahPage() {
                 <th className="px-6 py-4 text-left text-sm font-bold text-black uppercase">Nama</th>
                 <th className="px-6 py-4 text-left text-sm font-bold text-black uppercase">Telepon</th>
                 <th className="px-6 py-4 text-left text-sm font-bold text-black uppercase">Alamat</th>
+                <th className="px-6 py-4 text-center text-sm font-bold text-black uppercase">Status WA</th>
                 <th className="px-6 py-4 text-center text-sm font-bold text-black uppercase">QR Code</th>
               </tr>
             </thead>
@@ -352,6 +354,29 @@ export default function JamaahPage() {
                   <td className="px-6 py-4 text-sm font-semibold text-white">{jamaah.nama}</td>
                   <td className="px-6 py-4 text-sm text-gray-300">{jamaah.nomor_telepon}</td>
                   <td className="px-6 py-4 text-sm text-gray-300">{jamaah.alamat}</td>
+                  <td className="px-6 py-4 text-center">
+                    {!jamaah.wa_status || jamaah.wa_status === 'PENDING' ? (
+                      <span className="inline-block px-3 py-1 text-xs font-semibold rounded-full bg-yellow-500/20 text-yellow-400 border border-yellow-500/40">
+                        PENDING
+                      </span>
+                    ) : jamaah.wa_status === 'PROCESSING' ? (
+                      <span className="inline-block px-3 py-1 text-xs font-semibold rounded-full bg-blue-500/20 text-blue-400 border border-blue-500/40">
+                        PROCESSING
+                      </span>
+                    ) : jamaah.wa_status === 'SENT' ? (
+                      <span className="inline-block px-3 py-1 text-xs font-semibold rounded-full bg-green-500/20 text-green-400 border border-green-500/40" title={jamaah.wa_sent_at ? `Sent at: ${new Date(jamaah.wa_sent_at).toLocaleString('id-ID')}` : ''}>
+                        SENT ✓
+                      </span>
+                    ) : jamaah.wa_status === 'FAILED' ? (
+                      <span className="inline-block px-3 py-1 text-xs font-semibold rounded-full bg-red-500/20 text-red-400 border border-red-500/40" title={jamaah.wa_error || 'Unknown error'}>
+                        FAILED ✗
+                      </span>
+                    ) : (
+                      <span className="inline-block px-3 py-1 text-xs font-semibold rounded-full bg-gray-500/20 text-gray-400 border border-gray-500/40">
+                        N/A
+                      </span>
+                    )}
+                  </td>
                   <td className="px-6 py-4 text-center">
                     <button
                       onClick={() => downloadQRCode(jamaah)}
