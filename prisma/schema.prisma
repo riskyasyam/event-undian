@@ -87,6 +87,7 @@ model Hadiah {
   jumlah_pemenang  Int        @default(1)  // Number of winners for this prize
   urutan           Int        @default(1)  // Order for displaying/drawing
   tipe_peserta     TipePeserta @default(PESERTA)  // Prize type: for PESERTA or JAMAAH
+  kecepatan_undian KecepatanUndian @default(NORMAL)  // Lottery speed: NORMAL or DRAMATIS
   created_at       DateTime   @default(now())
   updated_at       DateTime   @updatedAt
   
@@ -130,6 +131,12 @@ model Admin {
 enum TipePeserta {
   PESERTA
   JAMAAH
+}
+
+// Enum for Lottery Speed
+enum KecepatanUndian {
+  NORMAL     // Fast spinning (4.5s)
+  DRAMATIS   // Dramatic slow-down effect for grand prizes (12s: 4s fast + 8s very slow per tick)
 }
 
 // Enum for WhatsApp blast status

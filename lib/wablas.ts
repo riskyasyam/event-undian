@@ -1,8 +1,3 @@
-/**
- * Wablas Helper - WhatsApp Gateway Integration
- * Docs: https://wablas.com/docs
- */
-
 export interface SendWablasMessageInput {
   phone: string;
   message: string;
@@ -86,9 +81,7 @@ export async function sendWablasMessage(
         error: data.message || `HTTP ${response.status}: ${response.statusText}`,
       };
     }
-
-    // Check Wablas response format
-    // Wablas typically returns { status: true/false, ... }
+    
     if (data.status === false || data.error) {
       return {
         success: false,

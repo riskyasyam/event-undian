@@ -23,6 +23,7 @@ interface Hadiah {
   jumlah_pemenang: number;
   urutan: number;
   tipe_peserta?: string;
+  kecepatan_undian?: string;
   winnersDrawn: number;
   remainingSlots: number;
   isComplete: boolean;
@@ -495,6 +496,7 @@ export default function UndiPage() {
                         <SlotUndian 
                           peserta={participants}
                           onWinner={handleSlotWinner}
+                          speed={selectedPrizeForDraw?.kecepatan_undian as 'NORMAL' | 'DRAMATIS' || 'NORMAL'}
                         />
                       </div>
                     )}

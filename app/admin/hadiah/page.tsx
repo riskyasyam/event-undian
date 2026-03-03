@@ -20,6 +20,7 @@ interface Hadiah {
   jumlah_pemenang: number;
   urutan: number;
   tipe_peserta: string;
+  kecepatan_undian: string;
   winnersDrawn: number;
   remainingSlots: number;
   isComplete: boolean;
@@ -117,6 +118,7 @@ export default function HadiahPage() {
           jumlah_pemenang: parseInt(formData.get('jumlah_pemenang') as string),
           urutan: parseInt(formData.get('urutan') as string),
           tipe_peserta: formData.get('tipe_peserta') || 'PESERTA',
+          kecepatan_undian: formData.get('kecepatan_undian') || 'NORMAL',
         }),
       });
 
@@ -271,8 +273,8 @@ export default function HadiahPage() {
 
       {/* Create Prize Modal */}
       {showCreateModal && (
-        <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-50 backdrop-blur-sm">
-          <div className="bg-[#1a1a1a] rounded-lg shadow-xl max-w-md w-full p-6 border border-yellow-500/20">
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-50 backdrop-blur-sm overflow-y-auto">
+          <div className="bg-[#1a1a1a] rounded-lg shadow-xl max-w-md w-full p-6 border border-yellow-500/20 my-8 max-h-[90vh] overflow-y-auto">
             <h2 className="text-xl font-bold text-yellow-500 mb-5">
               Tambah Hadiah Baru
             </h2>
@@ -314,6 +316,21 @@ export default function HadiahPage() {
                   <option value="JAMAAH">Jamaah</option>
                 </select>
                 <p className="text-xs text-gray-500 mt-1">Pilih apakah hadiah untuk Peserta Milad atau Jamaah</p>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-400 mb-1.5">
+                  Kecepatan Undian *
+                </label>
+                <select
+                  name="kecepatan_undian"
+                  required
+                  defaultValue="NORMAL"
+                  className="w-full px-3 py-2 text-sm bg-[#0a0a0a] border border-yellow-500/20 text-yellow-500 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
+                >
+                  <option value="NORMAL">⚡ Normal - Cepat (4.5 detik)</option>
+                  <option value="DRAMATIS">🎭 Dramatis - Grand Prize (12 detik: 4s cepat + 8s pelan per tik)</option>
+                </select>
+                <p className="text-xs text-gray-500 mt-1">Pilih dramatis untuk hadiah utama seperti mobil/umroh agar sangat menegangkan</p>
               </div>
               <div>
                 <label className="block text-xs font-medium text-gray-400 mb-1.5">

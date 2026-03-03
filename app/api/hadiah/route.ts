@@ -7,14 +7,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
 import { createHadiah } from '@/services/hadiah.service';
 import { errorResponse, successResponse } from '@/lib/utils';
-import { TipePeserta } from '@prisma/client';
+import { TipePeserta, KecepatanUndian } from '@prisma/client';
 
 export async function POST(request: NextRequest) {
   try {
     await requireAuth();
 
     const body = await request.json();
-    const { event_id, nama_hadiah, deskripsi, gambar_url, jumlah_pemenang, urutan, tipe_peserta } = body;
+    const { event_id, nama_hadiah, deskripsi, gambar_url, jumlah_pemenang, urutan, tipe_peserta, kecepatan_undian } = body;
 
     if (!event_id || !nama_hadiah || !jumlah_pemenang) {
       return NextResponse.json(
@@ -38,6 +38,7 @@ export async function POST(request: NextRequest) {
       jumlah_pemenang: parseInt(jumlah_pemenang),
       urutan: urutan ? parseInt(urutan) : undefined,
       tipe_peserta: tipe_peserta || TipePeserta.PESERTA,
+      kecepatan_undian: (kecepatan_undian as KecepatanUndian) || KecepatanUndian.NORMAL,
     });
 
     return NextResponse.json(

@@ -19,9 +19,10 @@ interface Peserta {
 interface SlotUndianProps {
   peserta: Peserta[];
   onWinner?: (winner: Peserta) => void;
+  speed?: 'NORMAL' | 'DRAMATIS';  // Control spin speed & drama
 }
 
-export default function SlotUndian({ peserta, onWinner }: SlotUndianProps) {
+export default function SlotUndian({ peserta, onWinner, speed = 'NORMAL' }: SlotUndianProps) {
   const [isSpinning, setIsSpinning] = useState(false);
   const [winner, setWinner] = useState<Peserta | null>(null);
   const [offset, setOffset] = useState(0);
@@ -33,7 +34,9 @@ export default function SlotUndian({ peserta, onWinner }: SlotUndianProps) {
   const CENTER_INDEX = 3;
   // Dynamic loops based on data size untuk optimize performance
   const MIN_LOOPS = peserta.length > 50 ? 8 : peserta.length > 20 ? 10 : 12;
-  const SPIN_DURATION = 4500; // 4.5 detik
+  
+  // Durasi spin berdasarkan speed setting
+  const SPIN_DURATION = speed === 'DRAMATIS' ? 12000 : 4500; // 12s untuk dramatis (4s cepat + 8s pelan), 4.5s untuk normal
 
   // Buat list panjang dengan looping data untuk animasi spin
   const expandedList = useMemo(() => {
@@ -77,12 +80,31 @@ export default function SlotUndian({ peserta, onWinner }: SlotUndianProps) {
       const elapsed = currentTime - startTime;
       const progress = Math.min(elapsed / SPIN_DURATION, 1);
 
-      // Easing function: ease-out cubic
-      const easeOutCubic = (t: number): number => {
-        return 1 - Math.pow(1 - t, 3);
-      };
+      // Easing function berdasarkan speed mode
+      let easedProgress: number;
+      
+      if (speed === 'DRAMATIS') {
+        // Mode Dramatis: 4 detik cepat, 8 detik sangat pelan per tik
+        // Total durasi: 12 detik
+        // 4 detik pertama = 33% dari total 12 detik = mencapai 85% perjalanan
+        // 8 detik terakhir = 67% dari total 12 detik = sisa 15% dengan efek per tik yang sangat pelan
+        if (progress < 0.33) {
+          // 33% pertama (4 detik): Cepat - mencapai 85% perjalanan
+          const t = progress / 0.33;
+          // Accelerate fast dengan ease-out quadratic
+          easedProgress = (1 - Math.pow(1 - t, 1.5)) * 0.85;
+        } else {
+          // 67% terakhir (8 detik): Sangat pelan - sisa 15% dengan efek per tik
+          const t = (progress - 0.33) / 0.67;
+          // Extreme slow curve - seperti turun per tik satu per satu
+          // Menggunakan exponential curve power 7 untuk efek sangat pelan dan menegangkan
+          easedProgress = 0.85 + (0.15 * (1 - Math.pow(1 - t, 7)));
+        }
+      } else {
+        // Mode Normal: ease-out cubic (standard)
+        easedProgress = 1 - Math.pow(1 - progress, 3);
+      }
 
-      const easedProgress = easeOutCubic(progress);
       const currentOffset = startOffset + (targetOffset - startOffset) * easedProgress;
 
       setDisplayOffset(currentOffset);
@@ -225,16 +247,6 @@ export default function SlotUndian({ peserta, onWinner }: SlotUndianProps) {
                 </div>
               </div>
             ))}
-          </div>
-        </div>
-
-        {/* Center Point Indicator */}
-        <div className="absolute left-1/2 transform -translate-x-1/2 z-30 pointer-events-none"
-             style={{ top: `${CENTER_INDEX * ITEM_HEIGHT + ITEM_HEIGHT / 2}px` }}>
-          <div className="flex items-center gap-2">
-            <div className="w-3 h-3 bg-yellow-500 rounded-full animate-pulse shadow-lg shadow-yellow-500/50" />
-            <div className="w-3 h-3 bg-yellow-500 rounded-full animate-pulse shadow-lg shadow-yellow-500/50" 
-                 style={{ animationDelay: '0.2s' }} />
           </div>
         </div>
       </div>

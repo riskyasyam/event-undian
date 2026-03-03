@@ -3,7 +3,7 @@
  */
 
 import { prisma } from '@/lib/prisma';
-import { Hadiah, TipePeserta } from '@prisma/client';
+import { Hadiah, TipePeserta, KecepatanUndian } from '@prisma/client';
 
 export interface CreateHadiahInput {
   event_id: string;
@@ -13,6 +13,7 @@ export interface CreateHadiahInput {
   jumlah_pemenang: number;
   urutan?: number;
   tipe_peserta?: TipePeserta;
+  kecepatan_undian?: KecepatanUndian;
 }
 
 export interface UpdateHadiahInput {
@@ -22,6 +23,7 @@ export interface UpdateHadiahInput {
   jumlah_pemenang?: number;
   urutan?: number;
   tipe_peserta?: TipePeserta;
+  kecepatan_undian?: KecepatanUndian;
 }
 
 /**
