@@ -2,6 +2,11 @@
   "name": "mu-travel-undian",
   "version": "0.1.0",
   "private": true,
+  "overrides": {
+    "react-custom-roulette": {
+      "react": "$react"
+    }
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
