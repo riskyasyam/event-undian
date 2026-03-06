@@ -77,12 +77,14 @@ export default function BlastWAPage() {
       const data = await response.json();
 
       if (data.success) {
-        // Calculate stats from participants
+        // Calculate stats from participants - only for PESERTA (milad participants), not JAMAAH
         const participants = data.data.participants;
+        const pesertaMilad = participants.filter((p: any) => p.tipe === 'PESERTA');
+        
         const statsCounted: BlastStats = {
-          total_sent: participants.filter((p: any) => p.wa_status === 'SENT').length,
-          total_failed: participants.filter((p: any) => p.wa_status === 'FAILED').length,
-          total_pending: participants.filter((p: any) => 
+          total_sent: pesertaMilad.filter((p: any) => p.wa_status === 'SENT').length,
+          total_failed: pesertaMilad.filter((p: any) => p.wa_status === 'FAILED').length,
+          total_pending: pesertaMilad.filter((p: any) => 
             !p.wa_status || p.wa_status === 'PENDING' || p.wa_status === 'PROCESSING'
           ).length,
         };
@@ -194,7 +196,10 @@ export default function BlastWAPage() {
           WhatsApp Blast
         </h1>
         <p className="text-gray-400">
-          Kirim notifikasi WhatsApp ke semua peserta secara otomatis
+          Kirim notifikasi WhatsApp ke semua peserta milad secara otomatis
+        </p>
+        <p className="text-sm text-gray-500 mt-1">
+          ℹ️ Blast ini hanya untuk peserta milad, tidak termasuk jamaah
         </p>
       </div>
 
@@ -225,7 +230,7 @@ export default function BlastWAPage() {
           </div>
 
           <div className="bg-gradient-to-br from-yellow-900 to-yellow-950 p-6 rounded-lg border border-yellow-600">
-            <h3 className="text-sm text-yellow-300 mb-2">Pending</h3>
+            <h3 className="text-sm text-yellow-300 mb-2">Pending (Peserta Milad)</h3>
             <p className="text-4xl font-bold text-yellow-400">
               {stats.total_pending}
             </p>
@@ -320,11 +325,13 @@ export default function BlastWAPage() {
           ℹ️ Informasi
         </h3>
         <ul className="space-y-2 text-gray-300 text-sm">
+          <li>• Blast ini hanya untuk peserta milad (tipe PESERTA)</li>
+          <li>• Jamaah tidak akan menerima notifikasi ini</li>
           <li>• Setiap batch memproses maksimal 50 peserta</li>
           <li>• Delay 2 detik antar pesan untuk menghindari rate limit</li>
           <li>• Proses berjalan otomatis sampai semua terkirim</li>
           <li>• Status FAILED dapat di-retry secara manual</li>
-          <li>• QR code akan dikirim sebagai gambar di WhatsApp</li>
+          <li>• Link QR code akan dikirim dan bisa diklik langsung</li>
         </ul>
       </div>
     </div>

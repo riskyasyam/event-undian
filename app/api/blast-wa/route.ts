@@ -38,11 +38,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Get batch of pending participants (max 50)
+    // Get batch of pending participants (max 50) - only PESERTA type
     const pendingPeserta = await prisma.peserta.findMany({
       where: {
         event_id: event_id,
         wa_status: 'PENDING',
+        tipe: 'PESERTA', // Only send to PESERTA (milad participants), not JAMAAH
       },
       take: BATCH_SIZE,
       orderBy: {
@@ -56,6 +57,7 @@ export async function POST(request: NextRequest) {
         where: {
           event_id: event_id,
           wa_status: 'PENDING',
+          tipe: 'PESERTA',
         },
       });
 
@@ -158,16 +160,17 @@ export async function POST(request: NextRequest) {
       where: {
         event_id: event_id,
         wa_status: 'PENDING',
+        tipe: 'PESERTA',
       },
     });
 
-    // Get overall stats
+    // Get overall stats (only for PESERTA type)
     const stats = {
       total_sent: await prisma.peserta.count({
-        where: { event_id: event_id, wa_status: 'SENT' },
+        where: { event_id: event_id, wa_status: 'SENT', tipe: 'PESERTA' },
       }),
       total_failed: await prisma.peserta.count({
-        where: { event_id: event_id, wa_status: 'FAILED' },
+        where: { event_id: event_id, wa_status: 'FAILED', tipe: 'PESERTA' },
       }),
       total_pending: remainingCount,
     };

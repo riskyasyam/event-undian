@@ -132,7 +132,7 @@ Simpan QR Code ini untuk presensi dan mengikuti undian berhadiah!
 
 Jangan lupa datang dan scan QR Code Anda untuk kesempatan memenangkan hadiah menarik! 🎁
 
-_MU Travel - Melayani dengan Hati_ 💛
+_MU Travel NYATA - Nyaman, Amanah, Terjangkau. 💛
 
 Wassalamu'alaikum Wr. Wb.`;
 }
