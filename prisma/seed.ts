@@ -36,10 +36,10 @@ async function main() {
     create: {
       id: 'default-event-id',
       nama_event: 'Milad MU Travel 2026',
-      tanggal: new Date('2026-03-15T10:00:00Z'),
+      tanggal: new Date('2026-04-25T03:00:00Z'), // 25 April 2026, 10:00 WIB
       lokasi: 'Hotel Cempaka Jember',
       deskripsi: 'Perayaan Milad MU Travel dengan undian doorprize menarik',
-      waktu_undian: new Date('2026-04-25T20:00:00Z'),
+      waktu_undian: new Date('2026-04-25T13:00:00Z'), // 25 April 2026, 20:00 WIB
       aktif: true,
     },
   });
