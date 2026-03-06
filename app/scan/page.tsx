@@ -5,10 +5,10 @@
  * /scan
  */
 
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 
-export default function ScanPage() {
+function ScanContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const token = searchParams.get('token');
@@ -188,5 +188,23 @@ export default function ScanPage() {
         )}
       </div>
     </div>
+  );
+}
+
+export default function ScanPage() {
+  return (
+    <Suspense 
+      fallback={
+        <div className="min-h-screen flex items-center justify-center bg-linear-to-br from-gray-900 via-black to-gray-900 px-4">
+          <div className="max-w-md w-full bg-linear-to-br from-gray-800 to-gray-900 rounded-2xl shadow-2xl p-12 text-center border border-yellow-600/30">
+            <div className="animate-spin rounded-full h-16 w-16 border-b-4 border-yellow-500 mx-auto mb-6"></div>
+            <h2 className="text-3xl font-bold text-yellow-400 mb-2">Loading...</h2>
+            <p className="text-gray-400">Please wait</p>
+          </div>
+        </div>
+      }
+    >
+      <ScanContent />
+    </Suspense>
   );
 }
