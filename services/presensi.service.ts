@@ -110,18 +110,33 @@ export async function presensiByToken(token: string, eventId: string): Promise<P
     throw new Error('Peserta sudah melakukan presensi sebelumnya');
   }
 
-  // Mark as attended
-  await prisma.peserta.update({
-    where: { id: peserta.id },
-    data: { status_hadir: true },
-  });
+  try {
+    // Use transaction to ensure atomicity
+    const result = await prisma.$transaction(async (tx) => {
+      // Mark as attended
+      await tx.peserta.update({
+        where: { id: peserta.id },
+        data: { status_hadir: true },
+      });
 
-  // Create presensi record
-  return prisma.presensi.create({
-    data: {
-      peserta_id: peserta.id,
-      event_id: eventId,
-      metode: 'qrcode',
-    },
-  });
+      // Create presensi record
+      const presensi = await tx.presensi.create({
+        data: {
+          peserta_id: peserta.id,
+          event_id: eventId,
+          metode: 'qrcode',
+        },
+      });
+
+      return presensi;
+    });
+
+    return result;
+  } catch (error: any) {
+    // Handle unique constraint violation (duplicate presensi)
+    if (error.code === 'P2002' && error.meta?.target?.includes('peserta_id')) {
+      throw new Error('Peserta sudah melakukan presensi sebelumnya');
+    }
+    throw error;
+  }
 }

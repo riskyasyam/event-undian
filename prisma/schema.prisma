@@ -63,7 +63,7 @@ model Peserta {
 // Presensi model - Attendance records
 model Presensi {
   id           String   @id @default(uuid())
-  peserta_id   String
+  peserta_id   String   @unique  // One participant can only have one attendance record
   event_id     String
   waktu_hadir  DateTime @default(now())
   metode       String   @default("manual") // "manual" or "qrcode"
