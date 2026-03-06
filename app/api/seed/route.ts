@@ -49,10 +49,10 @@ export async function POST(request: NextRequest) {
       create: {
         id: 'default-event-id',
         nama_event: 'Milad MU Travel 2026',
-        tanggal: new Date('2026-03-15T10:00:00Z'),
-        lokasi: 'Grand Hall MU Travel Jakarta',
+        tanggal: new Date('2026-04-25T16:00:00Z'),
+        lokasi: 'Hotel Cempaka Jember',
         deskripsi: 'Perayaan Milad MU Travel dengan undian doorprize menarik',
-        waktu_undian: new Date('2026-03-15T14:00:00Z'),
+        waktu_undian: new Date('2026-04-25T20:00:00Z'),
         aktif: true,
       },
     });
