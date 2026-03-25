@@ -123,6 +123,13 @@ export async function POST(request: NextRequest) {
           });
           successCount++;
         } else {
+          console.error('Wablas failed for participant:', {
+            pesertaId: peserta.id,
+            kode_unik: peserta.kode_unik,
+            phone: peserta.nomor_telepon,
+            error: waResult.error,
+          });
+
           // Failed: update to FAILED with error message
           await prisma.peserta.update({
             where: { id: peserta.id },

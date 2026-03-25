@@ -38,6 +38,7 @@ export async function sendWablasMessage(
     // Format: https://[your-domain].wablas.com/api/send-message
     const baseUrl = process.env.WABLAS_API_URL || 'https://console.wablas.com';
     const apiUrl = `${baseUrl}/api/send-message`;
+    const timeoutMs = Number(process.env.WABLAS_TIMEOUT_MS || '20000');
 
     // Prepare request body
     const body: any = {
@@ -50,51 +51,87 @@ export async function sendWablasMessage(
       body.image = input.image;
     }
 
-    console.log('Sending to Wablas:', { apiUrl, phone: phoneWithCountryCode });
-
-    // Send request to Wablas
-    const response = await fetch(apiUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': token,
-      },
-      body: JSON.stringify(body),
+    console.log('Sending to Wablas:', {
+      apiUrl,
+      phone: phoneWithCountryCode,
+      timeoutMs,
     });
 
-    // Check if response is JSON
-    const contentType = response.headers.get('content-type');
-    if (!contentType || !contentType.includes('application/json')) {
-      const textResponse = await response.text();
-      console.error('Non-JSON response from Wablas:', textResponse.substring(0, 500));
-      return {
-        success: false,
-        error: `Invalid response from Wablas API. Check token and API URL. Status: ${response.status}`,
-      };
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+    let response: Response;
+    try {
+      // Send request to Wablas with timeout protection
+      response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': token,
+        },
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timeoutId);
     }
 
-    const data = await response.json();
+    const contentType = response.headers.get('content-type') || 'unknown';
+    const rawResponse = await response.text();
+
+    console.log('Wablas response meta:', {
+      status: response.status,
+      statusText: response.statusText,
+      contentType,
+      bodyPreview: rawResponse.substring(0, 300),
+    });
+
+    let data: any = null;
+    if (contentType.includes('application/json')) {
+      try {
+        data = rawResponse ? JSON.parse(rawResponse) : null;
+      } catch {
+        console.error('Failed to parse JSON response from Wablas');
+      }
+    }
 
     if (!response.ok) {
+      console.error('Wablas HTTP error:', {
+        status: response.status,
+        statusText: response.statusText,
+        responseBody: rawResponse.substring(0, 1000),
+      });
       return {
         success: false,
-        error: data.message || `HTTP ${response.status}: ${response.statusText}`,
+        error:
+          data?.message ||
+          rawResponse ||
+          `HTTP ${response.status}: ${response.statusText}`,
       };
     }
     
-    if (data.status === false || data.error) {
+    if (data?.status === false || data?.error) {
+      console.error('Wablas business error:', data);
       return {
         success: false,
-        error: data.message || data.error || 'Unknown error from Wablas',
+        error: data?.message || data?.error || 'Unknown error from Wablas',
       };
     }
 
     return {
       success: true,
-      message: data.message || 'Message sent successfully',
+      message: data?.message || 'Message sent successfully',
       data: data,
     };
   } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      console.error('Wablas request timeout');
+      return {
+        success: false,
+        error: 'Request timeout while calling Wablas API',
+      };
+    }
+
     console.error('Wablas send error:', error);
     return {
       success: false,
