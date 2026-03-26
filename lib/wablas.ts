@@ -65,40 +65,71 @@ export async function sendWablasMessage(
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
-    let response: Response;
-    try {
+    const buildHeaders = (includeToken: boolean): Record<string, string> => {
       const headers: Record<string, string> = {
         'Content-Type': 'application/json',
       };
 
-      if (token) {
+      if (includeToken && token) {
         headers.Authorization = token;
       }
 
       if (secretKey) {
+        // Send common variants because Wablas integrations sometimes use different names.
         headers[secretHeaderName] = secretKey;
+        headers['secret-key'] = secretKey;
+        headers.secretkey = secretKey;
+        headers['x-secret-key'] = secretKey;
       }
 
-      // Send request to Wablas with timeout protection.
-      // Promise.race acts as a hard timeout guard in case abort signal is ignored upstream.
-      const fetchPromise = fetch(apiUrl, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify(body),
-        signal: controller.signal,
-      });
+      return headers;
+    };
 
-      const hardTimeoutPromise = new Promise<never>((_, reject) => {
-        setTimeout(() => reject(new Error('WABLAS_HARD_TIMEOUT')), timeoutMs + 500);
-      });
+    const sendRequest = async (headers: Record<string, string>) => {
+      let response: Response;
+      try {
+        const fetchPromise = fetch(apiUrl, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(body),
+          signal: controller.signal,
+        });
 
-      response = (await Promise.race([fetchPromise, hardTimeoutPromise])) as Response;
-    } finally {
-      clearTimeout(timeoutId);
+        const hardTimeoutPromise = new Promise<never>((_, reject) => {
+          setTimeout(() => reject(new Error('WABLAS_HARD_TIMEOUT')), timeoutMs + 500);
+        });
+
+        response = (await Promise.race([fetchPromise, hardTimeoutPromise])) as Response;
+      } finally {
+        clearTimeout(timeoutId);
+      }
+
+      const contentType = response.headers.get('content-type') || 'unknown';
+      const rawResponse = await response.text();
+
+      let data: any = null;
+      if (contentType.includes('application/json')) {
+        try {
+          data = rawResponse ? JSON.parse(rawResponse) : null;
+        } catch {
+          console.error('Failed to parse JSON response from Wablas');
+        }
+      }
+
+      return { response, contentType, rawResponse, data };
+    };
+
+    let { response, contentType, rawResponse, data } = await sendRequest(buildHeaders(true));
+
+    if (
+      response.status === 403 &&
+      Boolean(token) &&
+      Boolean(secretKey) &&
+      /need secret key|not authorized|access denied/i.test(rawResponse)
+    ) {
+      console.log('Retrying Wablas request with secret-key-only headers');
+      ({ response, contentType, rawResponse, data } = await sendRequest(buildHeaders(false)));
     }
-
-    const contentType = response.headers.get('content-type') || 'unknown';
-    const rawResponse = await response.text();
 
     console.log('Wablas response meta:', {
       status: response.status,
@@ -106,15 +137,6 @@ export async function sendWablasMessage(
       contentType,
       bodyPreview: rawResponse.substring(0, 300),
     });
-
-    let data: any = null;
-    if (contentType.includes('application/json')) {
-      try {
-        data = rawResponse ? JSON.parse(rawResponse) : null;
-      } catch {
-        console.error('Failed to parse JSON response from Wablas');
-      }
-    }
 
     if (!response.ok) {
       console.error('Wablas HTTP error:', {
