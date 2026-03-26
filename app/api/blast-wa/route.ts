@@ -102,10 +102,13 @@ export async function POST(request: NextRequest) {
         // 2. Generate QR code URL if not exists
         let qrCodeUrl = peserta.qr_code_url;
         if (!qrCodeUrl) {
-          // Generate QR code first
-          const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 
-                          `${request.nextUrl.protocol}//${request.nextUrl.host}`;
-          qrCodeUrl = `${baseUrl}/api/qrcode/${peserta.kode_unik}`;
+          // Build URL that is reachable by Wablas and explicitly ends with .png
+          const baseUrl =
+            process.env.WABLAS_PUBLIC_ASSET_BASE_URL ||
+            process.env.NEXT_PUBLIC_BASE_URL ||
+            process.env.BASE_URL ||
+            `${request.nextUrl.protocol}//${request.nextUrl.host}`;
+          qrCodeUrl = `${baseUrl.replace(/\/$/, '')}/api/qrcode/${peserta.kode_unik}.png`;
         }
 
         // 3. Build message

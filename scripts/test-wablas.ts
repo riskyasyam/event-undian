@@ -8,10 +8,14 @@ config();
 
 async function testWablas() {
   const token = process.env.WABLAS_TOKEN;
+  const secretKey = process.env.WABLAS_SECRET_KEY;
+  const authMode = (process.env.WABLAS_AUTH_MODE || 'auto').toLowerCase();
   const baseUrl = process.env.WABLAS_API_URL || 'https://bdg.wablas.com';
   
   console.log('🔍 Testing Wablas Configuration...\n');
-  console.log('Token:', token?.substring(0, 20) + '...');
+  console.log('Token exists:', Boolean(token));
+  console.log('Secret key exists:', Boolean(secretKey));
+  console.log('Auth mode:', authMode);
   console.log('Base URL:', baseUrl);
   console.log('Full API URL:', `${baseUrl}/api/send-message`);
   console.log('\n📤 Sending test request...\n');
@@ -19,18 +23,63 @@ async function testWablas() {
   try {
     const apiUrl = `${baseUrl}/api/send-message`;
     
-    const response = await fetch(apiUrl, {
-      method: 'POST',
-      headers: {
+    const attempts: Record<string, Record<string, string>> = {
+      both: {
+        'Content-Type': 'application/json',
+        'Authorization': token || '',
+        'secretkey': secretKey || '',
+        'secret-key': secretKey || '',
+        'x-secret-key': secretKey || '',
+      },
+      token: {
         'Content-Type': 'application/json',
         'Authorization': token || '',
       },
-      body: JSON.stringify({
-        phone: '6285855052664', // Test number
-        message: 'Test message from MU Travel',
-      }),
-    });
+      secret: {
+        'Content-Type': 'application/json',
+        'secretkey': secretKey || '',
+        'secret-key': secretKey || '',
+        'x-secret-key': secretKey || '',
+      },
+    };
 
+    const orderedAttempts =
+      authMode === 'token' ? ['token', 'both'] :
+      authMode === 'secret' ? ['secret', 'both'] :
+      ['both', 'secret', 'token'];
+
+    let response: Response | null = null;
+    let usedAttempt = '';
+
+    for (const attempt of orderedAttempts) {
+      const headers = attempts[attempt];
+      if (!headers) continue;
+      if (attempt === 'token' && !token) continue;
+      if (attempt === 'secret' && !secretKey) continue;
+      if (attempt === 'both' && (!token || !secretKey)) continue;
+
+      console.log(`Trying auth strategy: ${attempt}`);
+      const r = await fetch(apiUrl, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          phone: '6285855052664',
+          message: 'Test message from MU Travel',
+        }),
+      });
+
+      response = r;
+      usedAttempt = attempt;
+
+      if (r.ok) break;
+      if (![401, 403].includes(r.status)) break;
+    }
+
+    if (!response) {
+      throw new Error('No auth strategy could be executed. Check WABLAS_TOKEN / WABLAS_SECRET_KEY.');
+    }
+
+    console.log('Auth Strategy Used:', usedAttempt);
     console.log('Response Status:', response.status, response.statusText);
     console.log('Content-Type:', response.headers.get('content-type'));
     console.log('\n📥 Response Body:\n');

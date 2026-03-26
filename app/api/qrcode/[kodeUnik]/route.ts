@@ -15,8 +15,9 @@ interface RouteParams {
 export async function GET(request: NextRequest, { params }: RouteParams) {
   try {
     const { kodeUnik } = await params;
+    const normalizedKodeUnik = kodeUnik.replace(/\.png$/i, '');
 
-    if (!kodeUnik) {
+    if (!normalizedKodeUnik) {
       return NextResponse.json(
         { error: 'kodeUnik is required' },
         { status: 400 }
@@ -24,7 +25,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     }
 
     // Generate QR code as PNG buffer
-    const qrCodeBuffer = await QRCode.toBuffer(kodeUnik, {
+    const qrCodeBuffer = await QRCode.toBuffer(normalizedKodeUnik, {
       width: 400,
       margin: 2,
       type: 'png',

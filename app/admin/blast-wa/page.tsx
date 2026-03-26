@@ -24,6 +24,22 @@ interface BlastResult {
   failed: number;
   remaining: number;
   stats: BlastStats;
+  details?: BlastDetail[];
+  meta?: {
+    batch_size: number;
+    delay_ms: number;
+    processed_at: string;
+  };
+}
+
+interface BlastDetail {
+  peserta_id: string;
+  kode_unik: string;
+  nama: string;
+  phone: string;
+  status: 'SENT' | 'FAILED';
+  error?: string;
+  processed_at: string;
 }
 
 interface BlastLog {
@@ -42,6 +58,12 @@ export default function BlastWAPage() {
   const [progress, setProgress] = useState<string>('');
   const [logs, setLogs] = useState<BlastLog[]>([]);
   const [batchCount, setBatchCount] = useState(0);
+  const [terminalLogs, setTerminalLogs] = useState<string[]>([]);
+
+  const appendTerminalLog = (line: string) => {
+    const timestamp = new Date().toLocaleTimeString('id-ID');
+    setTerminalLogs((prev) => [...prev, `[${timestamp}] ${line}`]);
+  };
 
   useEffect(() => {
     fetchMainEvent();
@@ -104,6 +126,7 @@ export default function BlastWAPage() {
     setBlasting(true);
     setProgress('Starting WhatsApp blast...');
     setLogs([]);
+    setTerminalLogs([]);
     setBatchCount(0);
 
     let batch = 1;
@@ -112,6 +135,7 @@ export default function BlastWAPage() {
     try {
       while (hasMore) {
         setProgress(`Processing batch ${batch}...`);
+        appendTerminalLog(`POST /api/blast-wa batch=${batch} event_id=${selectedEvent.id}`);
 
         const response = await fetch('/api/blast-wa', {
           method: 'POST',
@@ -123,6 +147,7 @@ export default function BlastWAPage() {
 
         if (!data.success) {
           setProgress(`Error in batch ${batch}`);
+          appendTerminalLog(`ERROR batch=${batch} request failed`);
           break;
         }
 
@@ -138,6 +163,30 @@ export default function BlastWAPage() {
         };
         setLogs((prev) => [...prev, log]);
 
+        appendTerminalLog(
+          `batch=${batch} processed=${result.processed} success=${result.success} failed=${result.failed} remaining=${result.remaining}`
+        );
+
+        if (result.meta) {
+          appendTerminalLog(
+            `meta batch_size=${result.meta.batch_size} delay_ms=${result.meta.delay_ms}`
+          );
+        }
+
+        if (result.details && result.details.length > 0) {
+          for (const detail of result.details) {
+            if (detail.status === 'SENT') {
+              appendTerminalLog(
+                `SENT peserta=${detail.kode_unik} nama=${detail.nama} phone=${detail.phone}`
+              );
+            } else {
+              appendTerminalLog(
+                `FAILED peserta=${detail.kode_unik} nama=${detail.nama} phone=${detail.phone} error=${detail.error || 'Unknown error'}`
+              );
+            }
+          }
+        }
+
         // Update stats
         setStats(result.stats);
 
@@ -146,6 +195,9 @@ export default function BlastWAPage() {
           hasMore = false;
           setProgress(
             `✅ Blast completed! Sent: ${result.stats.total_sent}, Failed: ${result.stats.total_failed}`
+          );
+          appendTerminalLog(
+            `DONE sent=${result.stats.total_sent} failed=${result.stats.total_failed} pending=${result.stats.total_pending}`
           );
         } else {
           setProgress(
@@ -158,6 +210,9 @@ export default function BlastWAPage() {
     } catch (error) {
       console.error('Blast error:', error);
       setProgress('❌ Error occurred during blast');
+      appendTerminalLog(
+        `FATAL ${error instanceof Error ? error.message : 'Unknown blast error'}`
+      );
     } finally {
       setBlasting(false);
       // Refresh final stats
@@ -215,21 +270,21 @@ export default function BlastWAPage() {
       {/* Statistics Cards */}
       {stats && (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-          <div className="bg-gradient-to-br from-green-900 to-green-950 p-6 rounded-lg border border-green-600">
+          <div className="bg-linear-to-br from-green-900 to-green-950 p-6 rounded-lg border border-green-600">
             <h3 className="text-sm text-green-300 mb-2">Terkirim</h3>
             <p className="text-4xl font-bold text-green-400">
               {stats.total_sent}
             </p>
           </div>
 
-          <div className="bg-gradient-to-br from-red-900 to-red-950 p-6 rounded-lg border border-red-600">
+          <div className="bg-linear-to-br from-red-900 to-red-950 p-6 rounded-lg border border-red-600">
             <h3 className="text-sm text-red-300 mb-2">Gagal</h3>
             <p className="text-4xl font-bold text-red-400">
               {stats.total_failed}
             </p>
           </div>
 
-          <div className="bg-gradient-to-br from-yellow-900 to-yellow-950 p-6 rounded-lg border border-yellow-600">
+          <div className="bg-linear-to-br from-yellow-900 to-yellow-950 p-6 rounded-lg border border-yellow-600">
             <h3 className="text-sm text-yellow-300 mb-2">Pending (Peserta Milad)</h3>
             <p className="text-4xl font-bold text-yellow-400">
               {stats.total_pending}
@@ -318,6 +373,40 @@ export default function BlastWAPage() {
           </div>
         </div>
       )}
+
+      {/* Terminal Style Logs */}
+      <div className="mb-8">
+        <h2 className="text-xl font-semibold text-yellow-400 mb-4">
+          Console Log
+        </h2>
+        <div className="bg-black rounded-lg border border-gray-700 p-4 font-mono text-sm max-h-105 overflow-y-auto">
+          {terminalLogs.length === 0 ? (
+            <p className="text-gray-500">No logs yet. Click Mulai Blast WhatsApp to start.</p>
+          ) : (
+            <div className="space-y-1">
+              {terminalLogs.map((line, index) => {
+                const isFailed = line.includes('FAILED') || line.includes('ERROR') || line.includes('FATAL');
+                const isSuccess = line.includes('SENT') || line.includes('DONE');
+
+                return (
+                  <p
+                    key={`${index}-${line.substring(0, 20)}`}
+                    className={
+                      isFailed
+                        ? 'text-red-400 break-all'
+                        : isSuccess
+                        ? 'text-green-400 break-all'
+                        : 'text-gray-300 break-all'
+                    }
+                  >
+                    {line}
+                  </p>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
 
       {/* Information Panel */}
       <div className="bg-gray-900 rounded-lg border border-gray-700 p-6">
