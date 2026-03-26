@@ -79,13 +79,20 @@ export async function sendWablasMessage(
         headers[secretHeaderName] = secretKey;
       }
 
-      // Send request to Wablas with timeout protection
-      response = await fetch(apiUrl, {
+      // Send request to Wablas with timeout protection.
+      // Promise.race acts as a hard timeout guard in case abort signal is ignored upstream.
+      const fetchPromise = fetch(apiUrl, {
         method: 'POST',
         headers,
         body: JSON.stringify(body),
         signal: controller.signal,
       });
+
+      const hardTimeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error('WABLAS_HARD_TIMEOUT')), timeoutMs + 500);
+      });
+
+      response = (await Promise.race([fetchPromise, hardTimeoutPromise])) as Response;
     } finally {
       clearTimeout(timeoutId);
     }
@@ -138,6 +145,14 @@ export async function sendWablasMessage(
       data: data,
     };
   } catch (error) {
+    if (error instanceof Error && error.message === 'WABLAS_HARD_TIMEOUT') {
+      console.error('Wablas hard timeout guard triggered');
+      return {
+        success: false,
+        error: 'Hard timeout while waiting for Wablas API response',
+      };
+    }
+
     if (error instanceof Error && error.name === 'AbortError') {
       console.error('Wablas request timeout');
       return {
