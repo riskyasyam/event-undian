@@ -22,6 +22,7 @@ export async function sendWablasMessage(
   const token = process.env.WABLAS_TOKEN;
   const secretKey = process.env.WABLAS_SECRET_KEY;
   const secretHeaderName = process.env.WABLAS_SECRET_HEADER || 'secret-key';
+  const forceSecretOnly = process.env.WABLAS_FORCE_SECRET_ONLY === 'true';
 
   if (!token && !secretKey) {
     throw new Error('WABLAS auth is not configured. Set WABLAS_TOKEN or WABLAS_SECRET_KEY');
@@ -60,6 +61,7 @@ export async function sendWablasMessage(
       hasToken: Boolean(token),
       hasSecretKey: Boolean(secretKey),
       secretHeaderName,
+      forceSecretOnly,
     });
 
     const controller = new AbortController();
@@ -119,7 +121,10 @@ export async function sendWablasMessage(
       return { response, contentType, rawResponse, data };
     };
 
-    let { response, contentType, rawResponse, data } = await sendRequest(buildHeaders(true));
+    const useTokenOnFirstTry = Boolean(token) && !forceSecretOnly;
+    let { response, contentType, rawResponse, data } = await sendRequest(
+      buildHeaders(useTokenOnFirstTry)
+    );
 
     if (
       response.status === 403 &&
