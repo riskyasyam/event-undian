@@ -9,8 +9,11 @@ import { errorResponse, successResponse } from '@/lib/utils';
 import { prisma } from '@/lib/prisma';
 import { sendWablasMessage, buildParticipantMessage, sleep } from '@/lib/wablas';
 
-const BATCH_SIZE = 50; // Max 50 peserta per batch
-const DELAY_PER_MESSAGE = 2000; // 2 seconds delay per message
+// Increase serverless execution budget (supported in Next.js route handlers)
+export const maxDuration = 60;
+
+const BATCH_SIZE = Number(process.env.WABLAS_BATCH_SIZE || '5');
+const DELAY_PER_MESSAGE = Number(process.env.WABLAS_DELAY_MS || '500');
 
 export async function POST(request: NextRequest) {
   try {
