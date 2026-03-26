@@ -21,11 +21,16 @@ export async function sendWablasMessage(
 ): Promise<WablasResponse> {
   const token = process.env.WABLAS_TOKEN;
   const secretKey = process.env.WABLAS_SECRET_KEY;
-  const secretHeaderName = process.env.WABLAS_SECRET_HEADER || 'secret-key';
-  const forceSecretOnly = process.env.WABLAS_FORCE_SECRET_ONLY === 'true';
+  const useSecretOnly = process.env.WABLAS_USE_SECRET_ONLY === 'true';
+  const proxyUrl = process.env.WABLAS_PROXY_URL;
+  const proxyApiKey = process.env.WABLAS_PROXY_API_KEY;
+  const timeoutMs = Number(process.env.WABLAS_TIMEOUT_MS || '20000');
+  const proxyTimeoutMs = Number(
+    process.env.WABLAS_PROXY_TIMEOUT_MS || String(Math.max(timeoutMs, 30000))
+  );
 
-  if (!token && !secretKey) {
-    throw new Error('WABLAS auth is not configured. Set WABLAS_TOKEN or WABLAS_SECRET_KEY');
+  if (!proxyUrl && !token && !secretKey) {
+    throw new Error('WABLAS_TOKEN or WABLAS_SECRET_KEY is required. Configure in .env file.');
   }
 
   try {
@@ -37,11 +42,9 @@ export async function sendWablasMessage(
       ? formattedPhone 
       : `62${formattedPhone.startsWith('0') ? formattedPhone.slice(1) : formattedPhone}`;
 
-    // Wablas API endpoint - adjust based on your Wablas domain
-    // Format: https://[your-domain].wablas.com/api/send-message
+    // Wablas API endpoint
     const baseUrl = process.env.WABLAS_API_URL || 'https://console.wablas.com';
     const apiUrl = `${baseUrl}/api/send-message`;
-    const timeoutMs = Number(process.env.WABLAS_TIMEOUT_MS || '20000');
 
     // Prepare request body
     const body: any = {
@@ -54,34 +57,90 @@ export async function sendWablasMessage(
       body.image = input.image;
     }
 
-    console.log('Sending to Wablas:', {
+    console.log('Sending WA:', {
       apiUrl,
       phone: phoneWithCountryCode,
       timeoutMs,
+      proxyTimeoutMs,
+      usingProxy: Boolean(proxyUrl),
+      authMode: useSecretOnly ? 'secret-only' : token ? 'token' : 'secret',
       hasToken: Boolean(token),
       hasSecretKey: Boolean(secretKey),
-      secretHeaderName,
-      forceSecretOnly,
     });
+
+    const sendViaProxy = async () => {
+      if (!proxyUrl) {
+        return null;
+      }
+
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), proxyTimeoutMs);
+
+      try {
+        const headers: Record<string, string> = {
+          'Content-Type': 'application/json',
+        };
+
+        if (proxyApiKey) {
+          headers['x-api-key'] = proxyApiKey;
+        }
+
+        let proxyResponse: Response;
+        try {
+          const fetchPromise = fetch(`${proxyUrl.replace(/\/$/, '')}/send`, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify(body),
+            signal: controller.signal,
+          });
+
+          const hardTimeoutPromise = new Promise<never>((_, reject) => {
+            setTimeout(() => reject(new Error('WABLAS_PROXY_HARD_TIMEOUT')), proxyTimeoutMs + 500);
+          });
+
+          proxyResponse = (await Promise.race([fetchPromise, hardTimeoutPromise])) as Response;
+        } catch (error) {
+          if (error instanceof Error && error.name === 'AbortError') {
+            throw new Error('WABLAS_PROXY_TIMEOUT');
+          }
+          throw error;
+        }
+
+        const contentType = proxyResponse.headers.get('content-type') || 'unknown';
+        const rawResponse = await proxyResponse.text();
+        let data: any = null;
+
+        if (contentType.includes('application/json')) {
+          try {
+            data = rawResponse ? JSON.parse(rawResponse) : null;
+          } catch {
+            console.error('Failed to parse JSON response from WA proxy');
+          }
+        }
+
+        return { response: proxyResponse, contentType, rawResponse, data };
+      } finally {
+        clearTimeout(timeoutId);
+      }
+    };
 
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
-    const buildHeaders = (includeToken: boolean): Record<string, string> => {
+    const buildHeaders = (): Record<string, string> => {
       const headers: Record<string, string> = {
         'Content-Type': 'application/json',
       };
 
-      if (includeToken && token) {
-        headers.Authorization = token;
-      }
-
-      if (secretKey) {
-        // Send common variants because Wablas integrations sometimes use different names.
-        headers[secretHeaderName] = secretKey;
-        headers['secret-key'] = secretKey;
-        headers.secretkey = secretKey;
-        headers['x-secret-key'] = secretKey;
+      // Use secret-key mode if WABLAS_USE_SECRET_ONLY=true, otherwise use token
+      if (useSecretOnly && secretKey) {
+        headers['secretkey'] = secretKey;
+        headers['X-API-Key'] = secretKey;
+      } else if (token) {
+        headers['Authorization'] = token;
+      } else if (secretKey) {
+        headers['secretkey'] = secretKey;
+        headers['X-API-Key'] = secretKey;
       }
 
       return headers;
@@ -121,19 +180,16 @@ export async function sendWablasMessage(
       return { response, contentType, rawResponse, data };
     };
 
-    const useTokenOnFirstTry = Boolean(token) && !forceSecretOnly;
-    let { response, contentType, rawResponse, data } = await sendRequest(
-      buildHeaders(useTokenOnFirstTry)
-    );
+    let proxyResult = await sendViaProxy();
+    let response: Response;
+    let contentType: string;
+    let rawResponse: string;
+    let data: any;
 
-    if (
-      response.status === 403 &&
-      Boolean(token) &&
-      Boolean(secretKey) &&
-      /need secret key|not authorized|access denied/i.test(rawResponse)
-    ) {
-      console.log('Retrying Wablas request with secret-key-only headers');
-      ({ response, contentType, rawResponse, data } = await sendRequest(buildHeaders(false)));
+    if (proxyResult) {
+      ({ response, contentType, rawResponse, data } = proxyResult);
+    } else {
+      ({ response, contentType, rawResponse, data } = await sendRequest(buildHeaders()));
     }
 
     console.log('Wablas response meta:', {
@@ -172,6 +228,22 @@ export async function sendWablasMessage(
       data: data,
     };
   } catch (error) {
+    if (error instanceof Error && error.message === 'WABLAS_PROXY_TIMEOUT') {
+      console.error('WA proxy request timeout');
+      return {
+        success: false,
+        error: 'Proxy timeout while calling VM /send endpoint',
+      };
+    }
+
+    if (error instanceof Error && error.message === 'WABLAS_PROXY_HARD_TIMEOUT') {
+      console.error('WA proxy hard timeout guard triggered');
+      return {
+        success: false,
+        error: 'Proxy hard timeout while waiting VM /send response',
+      };
+    }
+
     if (error instanceof Error && error.message === 'WABLAS_HARD_TIMEOUT') {
       console.error('Wablas hard timeout guard triggered');
       return {
@@ -210,8 +282,8 @@ export function buildParticipantMessage(
   },
   eventName: string
 ): string {
-  const qrCodeSection = peserta.qr_code_url 
-    ? `\n🔗 *QR Code Anda:*\n${peserta.qr_code_url}\n\nSilakan buka link di atas untuk menampilkan QR Code Anda.\n` 
+  const qrCodeSection = peserta.qr_code_url
+    ? `\n🖼️ *QR Code Anda terlampir sebagai gambar pada pesan ini.*\n`
     : '';
 
   return `🎉 *Selamat Datang di ${eventName}!*
@@ -221,7 +293,7 @@ Assalamu'alaikum *${peserta.nama}*,
 Terima kasih sudah mendaftar sebagai peserta Milad MU Travel! 🌟
 
 📋 *Kode Peserta:* ${peserta.kode_unik}${qrCodeSection}
-Simpan QR Code ini untuk presensi dan mengikuti undian berhadiah!
+Simpan gambar QR Code ini untuk presensi dan mengikuti undian berhadiah!
 
 Jangan lupa datang dan scan QR Code Anda untuk kesempatan memenangkan hadiah menarik! 🎁
 

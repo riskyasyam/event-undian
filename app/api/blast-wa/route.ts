@@ -15,6 +15,16 @@ export const maxDuration = 60;
 const BATCH_SIZE = Number(process.env.WABLAS_BATCH_SIZE || '5');
 const DELAY_PER_MESSAGE = Number(process.env.WABLAS_DELAY_MS || '500');
 
+type BlastDetailLog = {
+  peserta_id: string;
+  kode_unik: string;
+  nama: string;
+  phone: string;
+  status: 'SENT' | 'FAILED';
+  error?: string;
+  processed_at: string;
+};
+
 export async function POST(request: NextRequest) {
   try {
     await requireAuth();
@@ -79,6 +89,7 @@ export async function POST(request: NextRequest) {
     // Process each participant sequentially (NOT parallel)
     let successCount = 0;
     let failCount = 0;
+    const detailLogs: BlastDetailLog[] = [];
 
     for (const peserta of pendingPeserta) {
       try {
@@ -107,11 +118,11 @@ export async function POST(request: NextRequest) {
           event.nama_event
         );
 
-        // 4. Send via Wablas (text only, no media)
+        // 4. Send via Wablas with QR image media
         const waResult = await sendWablasMessage({
           phone: peserta.nomor_telepon,
           message: message,
-          // image: qrCodeUrl, // Disabled - subscription doesn't support media
+          image: qrCodeUrl || undefined,
         });
 
         if (waResult.success) {
@@ -124,6 +135,16 @@ export async function POST(request: NextRequest) {
               wa_error: null, // Clear previous error if any
             },
           });
+
+          detailLogs.push({
+            peserta_id: peserta.id,
+            kode_unik: peserta.kode_unik,
+            nama: peserta.nama,
+            phone: peserta.nomor_telepon,
+            status: 'SENT',
+            processed_at: new Date().toISOString(),
+          });
+
           successCount++;
         } else {
           console.error('Wablas failed for participant:', {
@@ -141,6 +162,17 @@ export async function POST(request: NextRequest) {
               wa_error: waResult.error || 'Unknown error',
             },
           });
+
+          detailLogs.push({
+            peserta_id: peserta.id,
+            kode_unik: peserta.kode_unik,
+            nama: peserta.nama,
+            phone: peserta.nomor_telepon,
+            status: 'FAILED',
+            error: waResult.error || 'Unknown error',
+            processed_at: new Date().toISOString(),
+          });
+
           failCount++;
         }
 
@@ -158,6 +190,17 @@ export async function POST(request: NextRequest) {
             wa_error: error instanceof Error ? error.message : 'Processing error',
           },
         });
+
+        detailLogs.push({
+          peserta_id: peserta.id,
+          kode_unik: peserta.kode_unik,
+          nama: peserta.nama,
+          phone: peserta.nomor_telepon,
+          status: 'FAILED',
+          error: error instanceof Error ? error.message : 'Processing error',
+          processed_at: new Date().toISOString(),
+        });
+
         failCount++;
 
         // Continue to next participant even if this one failed
@@ -193,6 +236,12 @@ export async function POST(request: NextRequest) {
           failed: failCount,
           remaining: remainingCount,
           stats: stats,
+          details: detailLogs,
+          meta: {
+            batch_size: BATCH_SIZE,
+            delay_ms: DELAY_PER_MESSAGE,
+            processed_at: new Date().toISOString(),
+          },
         },
         `Processed ${successCount + failCount} messages. ${successCount} sent, ${failCount} failed.`
       )
