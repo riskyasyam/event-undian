@@ -20,9 +20,11 @@ export async function sendWablasMessage(
   input: SendWablasMessageInput
 ): Promise<WablasResponse> {
   const token = process.env.WABLAS_TOKEN;
+  const secretKey = process.env.WABLAS_SECRET_KEY;
+  const secretHeaderName = process.env.WABLAS_SECRET_HEADER || 'secret-key';
 
-  if (!token) {
-    throw new Error('WABLAS_TOKEN environment variable is not set');
+  if (!token && !secretKey) {
+    throw new Error('WABLAS auth is not configured. Set WABLAS_TOKEN or WABLAS_SECRET_KEY');
   }
 
   try {
@@ -55,6 +57,9 @@ export async function sendWablasMessage(
       apiUrl,
       phone: phoneWithCountryCode,
       timeoutMs,
+      hasToken: Boolean(token),
+      hasSecretKey: Boolean(secretKey),
+      secretHeaderName,
     });
 
     const controller = new AbortController();
@@ -62,13 +67,22 @@ export async function sendWablasMessage(
 
     let response: Response;
     try {
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+
+      if (token) {
+        headers.Authorization = token;
+      }
+
+      if (secretKey) {
+        headers[secretHeaderName] = secretKey;
+      }
+
       // Send request to Wablas with timeout protection
       response = await fetch(apiUrl, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': token,
-        },
+        headers,
         body: JSON.stringify(body),
         signal: controller.signal,
       });
