@@ -42,12 +42,22 @@ export default function PresensiPage() {
   const [stats, setStats] = useState<Stats | null>(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
   
   // Form states
   const [kodePeserta, setKodePeserta] = useState('');
   const [metode, setMetode] = useState<'manual' | 'qrcode'>('manual');
   const [successMessage, setSuccessMessage] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
+  const [scanModal, setScanModal] = useState<{
+    open: boolean;
+    mode: 'loading' | 'success' | 'error';
+    message: string;
+  }>({
+    open: false,
+    mode: 'loading',
+    message: '',
+  });
 
   useEffect(() => {
     fetchMainEvent();
@@ -90,7 +100,13 @@ export default function PresensiPage() {
     }
   };
 
-  const handleSubmitPresensi = async (kode?: string) => {
+  const handleSubmitPresensi = async (
+    kode?: string,
+    options?: {
+      showPopupOnSuccess?: boolean;
+      showScanModal?: boolean;
+    }
+  ) => {
     const kodePesertaToSubmit = kode || kodePeserta.trim();
     
     if (!kodePesertaToSubmit) {
@@ -98,9 +114,24 @@ export default function PresensiPage() {
       return;
     }
 
+    // Prevent double detection - set processing flag
+    setIsProcessing(true);
+
+    // Show loading modal immediately if scanning
+    if (options?.showScanModal) {
+      setScanModal({
+        open: true,
+        mode: 'loading',
+        message: 'Mendeteksi QR peserta...',
+      });
+    }
+
     setSubmitting(true);
     setErrorMessage('');
     setSuccessMessage('');
+
+    const startTime = Date.now();
+    const minDelay = 1000; // Minimum 1 second to show loading modal
 
     try {
       const response = await fetch('/api/presensi/submit', {
@@ -113,33 +144,91 @@ export default function PresensiPage() {
       });
 
       const data = await response.json();
+      
+      // Ensure minimum delay so loading modal is visible
+      const elapsed = Date.now() - startTime;
+      if (elapsed < minDelay) {
+        await new Promise(resolve => setTimeout(resolve, minDelay - elapsed));
+      }
 
       if (data.success) {
-        setSuccessMessage(`✓ Presensi berhasil! ${data.data.peserta.nama} - ${data.data.peserta.kode_unik}`);
+        const pesertaNama = data.data.peserta.nama;
+        setSuccessMessage(`✓ Presensi berhasil! ${pesertaNama} - ${data.data.peserta.kode_unik}`);
         setKodePeserta('');
         fetchPresensi(); // Refresh list
+
+        if (options?.showScanModal) {
+          setScanModal({
+            open: true,
+            mode: 'success',
+            message: `Berhasil presensi: ${pesertaNama}`,
+          });
+          
+          // Auto-dismiss after 3 seconds, then allow new scan
+          setTimeout(() => {
+            setScanModal({ open: false, mode: 'loading', message: '' });
+            setIsProcessing(false);
+          }, 3000);
+        }
+
+        if (options?.showPopupOnSuccess) {
+          alert(`Berhasil presensi: ${pesertaNama}`);
+        }
         
-        // Clear success message after 5 seconds
+        // Clear success message after 5 seconds (for manual input)
         setTimeout(() => setSuccessMessage(''), 5000);
       } else {
-        setErrorMessage(data.error || 'Gagal mencatat presensi');
+        const errorMsg = data.error || 'QR tidak terdeteksi';
+        setErrorMessage(`❌ ${errorMsg}`);
+
+        if (options?.showScanModal) {
+          setScanModal({
+            open: true,
+            mode: 'error',
+            message: errorMsg,
+          });
+          
+          // Auto-dismiss after 3 seconds, then allow new scan
+          setTimeout(() => {
+            setScanModal({ open: false, mode: 'loading', message: '' });
+            setIsProcessing(false);
+          }, 3000);
+        }
         
-        // Clear error message after 3 seconds
+        // Clear error message after 3 seconds (for manual input)
         setTimeout(() => setErrorMessage(''), 3000);
       }
     } catch (error) {
       console.error('Submit presensi error:', error);
-      setErrorMessage('Terjadi kesalahan saat mencatat presensi');
+      const errorMsg = 'Terjadi kesalahan saat mencatat presensi';
+      setErrorMessage(`❌ ${errorMsg}`);
+
+      if (options?.showScanModal) {
+        setScanModal({
+          open: true,
+          mode: 'error',
+          message: 'QR tidak terdeteksi',
+        });
+        
+        // Auto-dismiss after 3 seconds, then allow new scan
+        setTimeout(() => {
+          setScanModal({ open: false, mode: 'loading', message: '' });
+          setIsProcessing(false);
+        }, 3000);
+      }
     } finally {
       setSubmitting(false);
     }
   };
 
   const handleQRScanSuccess = (decodedText: string) => {
+    // Prevent double detection - only process if not already processing
+    if (isProcessing) return;
+
     // Auto-submit when QR code is scanned
     setKodePeserta(decodedText);
     setMetode('qrcode');
-    handleSubmitPresensi(decodedText);
+    handleSubmitPresensi(decodedText, { showScanModal: true });
   };
 
   const handleFormSubmit = (e: React.FormEvent) => {
@@ -430,6 +519,64 @@ export default function PresensiPage() {
       {presensiList.length === 0 && (
         <div className="text-center py-12 bg-[#1a1a1a] rounded-lg border border-yellow-500/20">
           <p className="text-gray-400 text-lg">Belum ada presensi yang tercatat</p>
+        </div>
+      )}
+
+      {scanModal.open && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
+          <div
+            className={`w-full max-w-md rounded-xl border-2 p-8 text-center transition-all duration-300 ${
+              scanModal.mode === 'loading'
+                ? 'border-yellow-500/50 bg-[#1a1a1a] shadow-2xl shadow-yellow-500/20'
+                : scanModal.mode === 'success'
+                ? 'border-green-500/50 bg-green-500/5 shadow-2xl shadow-green-500/30'
+                : 'border-red-500/50 bg-red-500/5 shadow-2xl shadow-red-500/30'
+            }`}
+          >
+            {scanModal.mode === 'loading' && (
+              <>
+                <div className="mb-4 flex justify-center">
+                  <div className="h-12 w-12 animate-spin rounded-full border-4 border-yellow-500 border-t-transparent"></div>
+                </div>
+                <h3 className="mb-2 text-xl font-bold text-yellow-400">Memproses</h3>
+                <p className="text-sm text-gray-300">{scanModal.message}</p>
+              </>
+            )}
+
+            {scanModal.mode === 'success' && (
+              <>
+                <div className="mb-4 text-6xl animate-bounce">✅</div>
+                <h3 className="mb-2 text-2xl font-bold text-green-500">Presensi Berhasil</h3>
+                <p className="text-base font-medium text-gray-200">{scanModal.message}</p>
+                <button
+                  onClick={() => {
+                    setScanModal({ open: false, mode: 'loading', message: '' });
+                    setIsProcessing(false);
+                  }}
+                  className="mt-6 w-full rounded-lg bg-green-600 px-4 py-3 text-base font-semibold text-white transition hover:bg-green-700"
+                >
+                  OK
+                </button>
+              </>
+            )}
+
+            {scanModal.mode === 'error' && (
+              <>
+                <div className="mb-4 text-6xl">❌</div>
+                <h3 className="mb-2 text-2xl font-bold text-red-500">Presensi Gagal</h3>
+                <p className="text-base font-medium text-gray-200">{scanModal.message}</p>
+                <button
+                  onClick={() => {
+                    setScanModal({ open: false, mode: 'loading', message: '' });
+                    setIsProcessing(false);
+                  }}
+                  className="mt-6 w-full rounded-lg bg-red-600 px-4 py-3 text-base font-semibold text-white transition hover:bg-red-700"
+                >
+                  OK
+                </button>
+              </>
+            )}
+          </div>
         </div>
       )}
     </div>

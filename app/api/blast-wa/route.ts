@@ -8,6 +8,7 @@ import { requireAuth } from '@/lib/auth';
 import { errorResponse, successResponse } from '@/lib/utils';
 import { prisma } from '@/lib/prisma';
 import { sendWablasMessage, buildParticipantMessage, sleep } from '@/lib/wablas';
+import QRCode from 'qrcode';
 
 // Increase serverless execution budget (supported in Next.js route handlers)
 export const maxDuration = 60;
@@ -99,16 +100,23 @@ export async function POST(request: NextRequest) {
           data: { wa_status: 'PROCESSING' },
         });
 
-        // 2. Generate QR code URL if not exists
+        // 2. Generate QR code if not exists (same format as manual "Generate QR")
         let qrCodeUrl = peserta.qr_code_url;
         if (!qrCodeUrl) {
-          // Build URL that is reachable by Wablas and explicitly ends with .png
-          const baseUrl =
-            process.env.WABLAS_PUBLIC_ASSET_BASE_URL ||
-            process.env.NEXT_PUBLIC_BASE_URL ||
-            process.env.BASE_URL ||
-            `${request.nextUrl.protocol}//${request.nextUrl.host}`;
-          qrCodeUrl = `${baseUrl.replace(/\/$/, '')}/api/qrcode/${peserta.kode_unik}.png`;
+          qrCodeUrl = await QRCode.toDataURL(peserta.kode_unik, {
+            width: 400,
+            margin: 2,
+            color: {
+              dark: '#000000',
+              light: '#FFFFFF',
+            },
+          });
+
+          // Persist so future blasts reuse the exact same QR image bytes.
+          await prisma.peserta.update({
+            where: { id: peserta.id },
+            data: { qr_code_url: qrCodeUrl },
+          });
         }
 
         // 3. Build message
@@ -118,7 +126,9 @@ export async function POST(request: NextRequest) {
             kode_unik: peserta.kode_unik,
             qr_code_url: qrCodeUrl,
           },
-          event.nama_event
+          event.nama_event,
+          event.tanggal,
+          event.lokasi
         );
 
         // 4. Send via Wablas with QR image media

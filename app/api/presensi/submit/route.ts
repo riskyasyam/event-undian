@@ -17,14 +17,58 @@ export async function POST(request: NextRequest) {
 
     if (!kode_peserta) {
       return NextResponse.json(
-        errorResponse('Kode peserta is required'),
+        errorResponse('QR tidak terdeteksi'),
         { status: 400 }
       );
     }
 
-    // Find participant by kode_unik
-    const peserta = await prisma.peserta.findUnique({
-      where: { kode_unik: kode_peserta },
+    const rawInput = String(kode_peserta).trim();
+
+    const tokenCandidates = new Set<string>();
+    const kodeCandidates = new Set<string>();
+
+    // 1) Raw text candidates
+    if (rawInput) {
+      tokenCandidates.add(rawInput);
+      kodeCandidates.add(rawInput.toUpperCase());
+    }
+
+    // 2) URL candidates (supports old QR formats like /scan?token=...)
+    if (/^https?:\/\//i.test(rawInput)) {
+      try {
+        const parsed = new URL(rawInput);
+        const tokenParam = parsed.searchParams.get('token');
+        const kodeParam = parsed.searchParams.get('kode') || parsed.searchParams.get('kode_unik');
+
+        if (tokenParam) {
+          tokenCandidates.add(tokenParam.trim());
+        }
+
+        if (kodeParam) {
+          kodeCandidates.add(kodeParam.trim().toUpperCase());
+        }
+
+        const pathTail = parsed.pathname.split('/').filter(Boolean).pop();
+        if (pathTail) {
+          const normalizedTail = pathTail.replace(/\.png$/i, '');
+          if (normalizedTail) {
+            tokenCandidates.add(normalizedTail);
+            kodeCandidates.add(normalizedTail.toUpperCase());
+          }
+        }
+      } catch {
+        // If URL parsing fails, continue with raw input only
+      }
+    }
+
+    // Find participant by either kode_unik or token to support legacy QR variants.
+    const peserta = await prisma.peserta.findFirst({
+      where: {
+        OR: [
+          ...Array.from(kodeCandidates).map((kode) => ({ kode_unik: kode })),
+          ...Array.from(tokenCandidates).map((token) => ({ token })),
+        ],
+      },
       include: {
         event: true,
       },
@@ -32,7 +76,7 @@ export async function POST(request: NextRequest) {
 
     if (!peserta) {
       return NextResponse.json(
-        errorResponse('Peserta tidak ditemukan'),
+        errorResponse('QR tidak terdeteksi'),
         { status: 404 }
       );
     }
@@ -40,7 +84,7 @@ export async function POST(request: NextRequest) {
     // Check if already attended
     if (peserta.status_hadir) {
       return NextResponse.json(
-        errorResponse('Peserta sudah melakukan presensi sebelumnya'),
+        errorResponse(`${peserta.nama} sudah presensi`),
         { status: 400 }
       );
     }
@@ -85,7 +129,7 @@ export async function POST(request: NextRequest) {
       // Handle unique constraint violation (duplicate presensi)
       if (txError.code === 'P2002' && txError.meta?.target?.includes('peserta_id')) {
         return NextResponse.json(
-          errorResponse('Peserta sudah melakukan presensi sebelumnya'),
+          errorResponse(`${peserta.nama} sudah presensi`),
           { status: 400 }
         );
       }

@@ -586,24 +586,39 @@ export function buildParticipantMessage(
     kode_unik: string;
     qr_code_url?: string | null;
   },
-  eventName: string
+  eventName: string,
+  eventDate?: Date | string | null,
+  eventLocation?: string | null
 ): string {
   const qrCodeSection = peserta.qr_code_url
     ? `\n🖼️ *QR Code Anda terlampir sebagai gambar pada pesan ini.*\n`
     : '';
 
-  return `🎉 *Selamat Datang di ${eventName}!*
+  const formattedDate = eventDate
+    ? new Intl.DateTimeFormat('id-ID', {
+        dateStyle: 'full',
+        timeStyle: 'short',
+        timeZone: 'Asia/Jakarta',
+      }).format(new Date(eventDate))
+    : '-';
+  const formattedLocation = eventLocation || '-';
+
+  return `🎉 *Selamat Datang di Reuni Akbar, Halal bi Halal, dan Milad MU Travel 2026!*
 
 Assalamu'alaikum *${peserta.nama}*,
 
 Terima kasih sudah mendaftar sebagai peserta Milad MU Travel! 🌟
+
+📅 *Tanggal Acara:* ${formattedDate}
+⏰ *Waktu Mulai:* 16:00 WIB
+📍 *Tempat:* ${formattedLocation}
 
 📋 *Kode Peserta:* ${peserta.kode_unik}${qrCodeSection}
 Simpan gambar QR Code ini untuk presensi dan mengikuti undian berhadiah!
 
 Jangan lupa datang dan scan QR Code Anda untuk kesempatan memenangkan hadiah menarik! 🎁
 
-_MU Travel NYATA - Nyaman, Amanah, Terjangkau. 💛
+MU Travel NYATA - Nyaman, Amanah, Terjangkau. 💛
 
 Wassalamu'alaikum Wr. Wb.`;
 }

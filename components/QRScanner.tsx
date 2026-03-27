@@ -16,6 +16,8 @@ interface QRScannerProps {
 export default function QRScanner({ onScanSuccess, onScanError }: QRScannerProps) {
   const [isScanning, setIsScanning] = useState(false);
   const [error, setError] = useState<string>('');
+  const [scanDetected, setScanDetected] = useState(false);
+  const isProcessingRef = useRef(false);
   const scannerRef = useRef<Html5Qrcode | null>(null);
   const [cameraPermission, setCameraPermission] = useState<'granted' | 'denied' | 'prompt'>('prompt');
 
@@ -40,9 +42,24 @@ export default function QRScanner({ onScanSuccess, onScanError }: QRScannerProps
           qrbox: { width: 250, height: 250 },
         },
         (decodedText) => {
-          // Success callback
-          onScanSuccess(decodedText);
-          stopScanning();
+          // Prevent double detection - skip if already processing
+          if (isProcessingRef.current) return;
+          
+          // Success callback - show green feedback
+          isProcessingRef.current = true;
+          setScanDetected(true);
+          
+          setTimeout(() => {
+            onScanSuccess(decodedText);
+            setScanDetected(false);
+          }, 500); // Brief green flash before processing
+          
+          // Prevent new scans for 5 seconds after successful detection
+          // Don't reset in stopScanning, only here to ensure consistency
+          setTimeout(() => {
+            isProcessingRef.current = false;
+            stopScanning();
+          }, 5000);
         },
         (errorMessage) => {
           // Error callback (can be ignored for scanning process)
@@ -68,6 +85,8 @@ export default function QRScanner({ onScanSuccess, onScanError }: QRScannerProps
         scannerRef.current.clear();
         scannerRef.current = null;
         setIsScanning(false);
+        setScanDetected(false);
+        // Don't reset isProcessingRef here - let it be controlled by the callback timeout
       }
     } catch (err) {
       console.error('Error stopping scanner:', err);
@@ -87,10 +106,23 @@ export default function QRScanner({ onScanSuccess, onScanError }: QRScannerProps
   return (
     <div className="space-y-4">
       {/* Scanner Container */}
-      <div className="relative bg-black rounded-lg overflow-hidden border-2 border-yellow-500/20">
+      <div className={`relative bg-black rounded-lg overflow-hidden border-2 transition-all duration-300 ${
+        scanDetected 
+          ? 'border-green-500 shadow-lg shadow-green-500/50 bg-green-950/20' 
+          : 'border-yellow-500/20'
+      }`}>
         <div id="qr-reader" className="w-full min-h-[300px] md:min-h-[400px]" />
         
-        {!isScanning && (
+        {scanDetected && (
+          <div className="absolute inset-0 flex items-center justify-center bg-green-500/20 backdrop-blur-sm">
+            <div className="text-center">
+              <div className="text-6xl mb-3 animate-bounce">✅</div>
+              <p className="text-green-400 font-bold text-lg">QR Terdeteksi!</p>
+            </div>
+          </div>
+        )}
+        
+        {!isScanning && !scanDetected && (
           <div className="absolute inset-0 flex items-center justify-center bg-black/80">
             <div className="text-center p-6">
               <svg
