@@ -43,6 +43,7 @@ export default function PresensiPage() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [resettingPresensi, setResettingPresensi] = useState(false);
   
   // Form states
   const [kodePeserta, setKodePeserta] = useState('');
@@ -309,6 +310,51 @@ export default function PresensiPage() {
     }
   };
 
+  const handleResetPresensi = async () => {
+    if (!selectedEvent || resettingPresensi) return;
+
+    const confirmed = window.confirm(
+      'Reset presensi akan menghapus data presensi dan mengembalikan semua peserta ke status belum hadir. Lanjutkan?'
+    );
+    if (!confirmed) return;
+
+    const pin = window.prompt('Masukkan PIN reset presensi:');
+    if (!pin) return;
+
+    setResettingPresensi(true);
+    setErrorMessage('');
+    setSuccessMessage('');
+
+    try {
+      const response = await fetch('/api/presensi/reset', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          event_id: selectedEvent.id,
+          pin,
+        }),
+      });
+
+      const data = await response.json();
+      if (!response.ok || !data.success) {
+        alert(`Gagal reset presensi: ${data.error || 'Unknown error'}`);
+        return;
+      }
+
+      await fetchPresensi();
+      setKodePeserta('');
+      setErrorMessage('');
+      setSuccessMessage('✓ Presensi berhasil direset. Semua peserta kembali belum hadir.');
+      setTimeout(() => setSuccessMessage(''), 5000);
+      alert('Presensi berhasil direset.');
+    } catch (error) {
+      console.error('Reset presensi error:', error);
+      alert('Terjadi kesalahan saat reset presensi');
+    } finally {
+      setResettingPresensi(false);
+    }
+  };
+
   if (loading || !selectedEvent) {
     return (
       <div className="text-center py-12">
@@ -350,8 +396,15 @@ export default function PresensiPage() {
         </div>
       )}
 
-      {/* Export Excel Button */}
-      <div className="flex justify-end">
+      {/* Action Buttons */}
+      <div className="flex justify-end gap-3 flex-wrap">
+        <button
+          onClick={handleResetPresensi}
+          disabled={resettingPresensi || submitting || isProcessing}
+          className="flex items-center gap-2 px-4 md:px-6 py-2 md:py-3 bg-red-600/20 hover:bg-red-600/30 text-red-400 border border-red-500/40 font-semibold rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed text-sm md:text-base"
+        >
+          {resettingPresensi ? 'Mereset...' : 'Reset Presensi'}
+        </button>
         <button
           onClick={exportToExcel}
           className="flex items-center gap-2 px-4 md:px-6 py-2 md:py-3 bg-green-600 hover:bg-green-700 text-white font-semibold rounded-lg transition shadow-lg shadow-green-600/50 text-sm md:text-base"

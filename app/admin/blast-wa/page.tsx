@@ -28,6 +28,7 @@ interface BlastResult {
   meta?: {
     batch_size: number;
     delay_ms: number;
+    pause_every_batches?: number;
     processed_at: string;
   };
 }
@@ -50,6 +51,13 @@ interface BlastLog {
   failed: number;
 }
 
+const BATCH_DELAY_MS = 150000; // 2.5 menit antar batch
+const DEFAULT_PAUSE_EVERY_BATCHES = 10;
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 export default function BlastWAPage() {
   const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
   const [stats, setStats] = useState<BlastStats | null>(null);
@@ -59,6 +67,8 @@ export default function BlastWAPage() {
   const [logs, setLogs] = useState<BlastLog[]>([]);
   const [batchCount, setBatchCount] = useState(0);
   const [terminalLogs, setTerminalLogs] = useState<string[]>([]);
+  const [isPaused, setIsPaused] = useState(false);
+  const [nextBatchToRun, setNextBatchToRun] = useState(1);
 
   const appendTerminalLog = (line: string) => {
     const timestamp = new Date().toLocaleTimeString('id-ID');
@@ -123,14 +133,24 @@ export default function BlastWAPage() {
   const handleBlast = async () => {
     if (!selectedEvent) return;
 
-    setBlasting(true);
-    setProgress('Starting WhatsApp blast...');
-    setLogs([]);
-    setTerminalLogs([]);
-    setBatchCount(0);
+    const isResuming = isPaused;
 
-    let batch = 1;
+    setBlasting(true);
+    setIsPaused(false);
+
+    if (!isResuming) {
+      setProgress('Starting WhatsApp blast...');
+      setLogs([]);
+      setTerminalLogs([]);
+      setBatchCount(0);
+      setNextBatchToRun(1);
+    } else {
+      setProgress(`Melanjutkan dari batch ${nextBatchToRun}...`);
+    }
+
+    let batch = isResuming ? nextBatchToRun : 1;
     let hasMore = true;
+    let pauseEveryBatches = DEFAULT_PAUSE_EVERY_BATCHES;
 
     try {
       while (hasMore) {
@@ -169,8 +189,9 @@ export default function BlastWAPage() {
 
         if (result.meta) {
           appendTerminalLog(
-            `meta batch_size=${result.meta.batch_size} delay_ms=${result.meta.delay_ms}`
+            `meta batch_size=${result.meta.batch_size} delay_ms=${result.meta.delay_ms} pause_every_batches=${result.meta.pause_every_batches || DEFAULT_PAUSE_EVERY_BATCHES}`
           );
+          pauseEveryBatches = result.meta.pause_every_batches || DEFAULT_PAUSE_EVERY_BATCHES;
         }
 
         if (result.details && result.details.length > 0) {
@@ -193,6 +214,8 @@ export default function BlastWAPage() {
         // Check if done
         if (result.remaining === 0 || result.processed === 0) {
           hasMore = false;
+          setIsPaused(false);
+          setNextBatchToRun(1);
           setProgress(
             `✅ Blast completed! Sent: ${result.stats.total_sent}, Failed: ${result.stats.total_failed}`
           );
@@ -200,9 +223,24 @@ export default function BlastWAPage() {
             `DONE sent=${result.stats.total_sent} failed=${result.stats.total_failed} pending=${result.stats.total_pending}`
           );
         } else {
+          if (batch % pauseEveryBatches === 0) {
+            hasMore = false;
+            setIsPaused(true);
+            setNextBatchToRun(batch + 1);
+            setProgress(
+              `⏸️ Pause otomatis setelah batch ${batch}. Klik "Lanjutkan Blast" untuk meneruskan.`
+            );
+            appendTerminalLog(
+              `PAUSED auto pause every ${pauseEveryBatches} batches. next_batch=${batch + 1}`
+            );
+            break;
+          }
+
           setProgress(
-            `Batch ${batch} done. ${result.remaining} remaining...`
+            `Batch ${batch} done. ${result.remaining} remaining... Menunggu ${(BATCH_DELAY_MS / 60000).toFixed(1)} menit sebelum batch berikutnya.`
           );
+          appendTerminalLog(`WAIT batch delay ${BATCH_DELAY_MS}ms before next batch`);
+          await sleep(BATCH_DELAY_MS);
           batch++;
           setBatchCount(batch);
         }
@@ -304,7 +342,7 @@ export default function BlastWAPage() {
               : 'bg-yellow-600 hover:bg-yellow-700 text-black'
           }`}
         >
-          {blasting ? '⏳ Processing...' : 'Mulai Blast WhatsApp'}
+          {blasting ? '⏳ Processing...' : isPaused ? `▶️ Lanjutkan Blast (mulai batch ${nextBatchToRun})` : 'Mulai Blast WhatsApp'}
         </button>
 
         {stats && stats.total_failed > 0 && (
@@ -416,11 +454,13 @@ export default function BlastWAPage() {
         <ul className="space-y-2 text-gray-300 text-sm">
           <li>• Blast ini hanya untuk peserta milad (tipe PESERTA)</li>
           <li>• Jamaah tidak akan menerima notifikasi ini</li>
-          <li>• Setiap batch memproses maksimal 50 peserta</li>
-          <li>• Delay 2 detik antar pesan untuk menghindari rate limit</li>
-          <li>• Proses berjalan otomatis sampai semua terkirim</li>
+          <li>• Setiap batch memproses maksimal 5 peserta</li>
+          <li>• Delay antar pesan mengikuti WABLAS_DELAY_MS (default 35 detik)</li>
+          <li>• Delay antar batch 2.5 menit</li>
+          <li>• Setiap 10 batch proses auto-pause, lanjut manual dengan tombol Lanjutkan Blast</li>
           <li>• Status FAILED dapat di-retry secara manual</li>
           <li>• Link QR code akan dikirim dan bisa diklik langsung</li>
+          <li>• Nomor telepon yang sama di data berbeda tetap diproses satu per satu</li>
         </ul>
       </div>
     </div>

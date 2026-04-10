@@ -609,7 +609,7 @@ Assalamu'alaikum *${peserta.nama}*,
 
 Terima kasih sudah mendaftar sebagai peserta Milad MU Travel! 🌟
 
-📅 *Tanggal Acara:* ${formattedDate}
+📅 *Tanggal Acara:* Sabtu, 25 April 2026
 ⏰ *Waktu Mulai:* 16:00 WIB
 📍 *Tempat:* ${formattedLocation}
 
@@ -620,7 +620,11 @@ Jangan lupa datang dan scan QR Code Anda untuk kesempatan memenangkan hadiah men
 
 MU Travel NYATA - Nyaman, Amanah, Terjangkau. 💛
 
-Wassalamu'alaikum Wr. Wb.`;
+Wassalamu'alaikum Wr. Wb.
+
+*Catatan: Jika ada double pesan, gunakan salah satu saja. Mohon maaf atas ketidaknyamanan ini.*
+`
+;
 }
 
 /**

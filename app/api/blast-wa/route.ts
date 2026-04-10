@@ -11,10 +11,11 @@ import { sendWablasMessage, buildParticipantMessage, sleep } from '@/lib/wablas'
 import QRCode from 'qrcode';
 
 // Increase serverless execution budget (supported in Next.js route handlers)
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 const BATCH_SIZE = Number(process.env.WABLAS_BATCH_SIZE || '5');
-const DELAY_PER_MESSAGE = Number(process.env.WABLAS_DELAY_MS || '500');
+const DELAY_PER_MESSAGE = Number(process.env.WABLAS_DELAY_MS || '35000');
+const PAUSE_EVERY_BATCHES = Number(process.env.WABLAS_PAUSE_EVERY_BATCHES || '10');
 
 type BlastDetailLog = {
   peserta_id: string;
@@ -253,6 +254,7 @@ export async function POST(request: NextRequest) {
           meta: {
             batch_size: BATCH_SIZE,
             delay_ms: DELAY_PER_MESSAGE,
+            pause_every_batches: PAUSE_EVERY_BATCHES,
             processed_at: new Date().toISOString(),
           },
         },

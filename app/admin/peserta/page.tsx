@@ -28,6 +28,12 @@ interface Peserta {
   wa_error?: string;
 }
 
+interface EditFormData {
+  nama: string;
+  nomor_telepon: string;
+  alamat: string;
+}
+
 interface Stats {
   total: number;
   attended: number;
@@ -44,6 +50,16 @@ export default function PesertaPage() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [filter, setFilter] = useState<'all' | 'attended' | 'eligible'>('all');
+  
+  // Edit modal state
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [editingPeserta, setEditingPeserta] = useState<Peserta | null>(null);
+  const [editFormData, setEditFormData] = useState<EditFormData>({
+    nama: '',
+    nomor_telepon: '',
+    alamat: '',
+  });
+  const [isUpdating, setIsUpdating] = useState(false);
 
   useEffect(() => {
     fetchMainEvent();
@@ -84,6 +100,152 @@ export default function PesertaPage() {
       console.error('Failed to fetch participants:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const openEditModal = (peserta: Peserta) => {
+    setEditingPeserta(peserta);
+    setEditFormData({
+      nama: peserta.nama,
+      nomor_telepon: peserta.nomor_telepon,
+      alamat: peserta.alamat,
+    });
+    setIsEditModalOpen(true);
+  };
+
+  const closeEditModal = () => {
+    setIsEditModalOpen(false);
+    setEditingPeserta(null);
+    setEditFormData({
+      nama: '',
+      nomor_telepon: '',
+      alamat: '',
+    });
+  };
+
+  const handleEditFormChange = (field: keyof EditFormData, value: string) => {
+    setEditFormData(prev => ({
+      ...prev,
+      [field]: value,
+    }));
+  };
+
+  const handleUpdatePeserta = async () => {
+    if (!editingPeserta) return;
+
+    setIsUpdating(true);
+
+    try {
+      const response = await fetch(`/api/peserta/${editingPeserta.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(editFormData),
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        // Update local state
+        setParticipants(prev =>
+          prev.map(p =>
+            p.id === editingPeserta.id
+              ? {
+                  ...p,
+                  ...editFormData,
+                  wa_status: editFormData.nomor_telepon !== editingPeserta.nomor_telepon 
+                    ? 'PENDING' 
+                    : p.wa_status,
+                  wa_error: editFormData.nomor_telepon !== editingPeserta.nomor_telepon 
+                    ? undefined 
+                    : p.wa_error,
+                  wa_sent_at: editFormData.nomor_telepon !== editingPeserta.nomor_telepon 
+                    ? undefined 
+                    : p.wa_sent_at,
+                }
+              : p
+          )
+        );
+        alert('Peserta berhasil diupdate');
+        closeEditModal();
+      } else {
+        alert(`Update gagal: ${data.error}`);
+      }
+    } catch (error) {
+      console.error('Update error:', error);
+      alert('Update gagal');
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  const handleResetWAStatus = async (peserta: Peserta) => {
+    if (!confirm(`Reset wa_status ${peserta.nama} ke PENDING?`)) return;
+
+    try {
+      const response = await fetch(`/api/peserta/${peserta.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ wa_status: 'PENDING' }),
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        // Update local state
+        setParticipants(prev =>
+          prev.map(p =>
+            p.id === peserta.id
+              ? {
+                  ...p,
+                  wa_status: 'PENDING',
+                  wa_error: undefined,
+                  wa_sent_at: undefined,
+                }
+              : p
+          )
+        );
+        alert('Status WA berhasil direset ke PENDING');
+      } else {
+        alert(`Reset gagal: ${data.error}`);
+      }
+    } catch (error) {
+      console.error('Reset error:', error);
+      alert('Reset gagal');
+    }
+  };
+
+  const handleMarkWASent = async (peserta: Peserta) => {
+    if (!confirm(`Tandai WA ${peserta.nama} sebagai SENT?`)) return;
+
+    try {
+      const response = await fetch(`/api/peserta/${peserta.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ wa_status: 'SENT' }),
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        setParticipants(prev =>
+          prev.map(p =>
+            p.id === peserta.id
+              ? {
+                  ...p,
+                  wa_status: 'SENT',
+                  wa_error: undefined,
+                  wa_sent_at: new Date().toISOString(),
+                }
+              : p
+          )
+        );
+        alert('Status WA berhasil ditandai sebagai SENT');
+      } else {
+        alert(`Update gagal: ${data.error}`);
+      }
+    } catch (error) {
+      console.error('Mark sent error:', error);
+      alert('Update gagal');
     }
   };
 
@@ -346,7 +508,7 @@ export default function PesertaPage() {
                 <th className="px-6 py-4 text-left text-sm font-bold text-black uppercase">Telepon</th>
                 <th className="px-6 py-4 text-left text-sm font-bold text-black uppercase">Alamat</th>
                 <th className="px-6 py-4 text-center text-sm font-bold text-black uppercase">Status WA</th>
-                <th className="px-6 py-4 text-center text-sm font-bold text-black uppercase">QR Code</th>
+                <th className="px-6 py-4 text-center text-sm font-bold text-black uppercase">Aksi</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-yellow-500/20">
@@ -380,12 +542,36 @@ export default function PesertaPage() {
                     )}
                   </td>
                   <td className="px-6 py-4 text-center">
-                    <button
-                      onClick={() => downloadQRCode(peserta)}
-                      className="px-4 py-2 bg-yellow-500/10 text-yellow-500 text-sm font-semibold rounded-lg hover:bg-yellow-500/20 transition border border-yellow-500/20"
-                    >
-                      {peserta.qr_code_url ? 'Download QR' : 'Generate QR'}
-                    </button>
+                    <div className="flex gap-2 justify-center flex-wrap">
+                      <button
+                        onClick={() => downloadQRCode(peserta)}
+                        className="px-3 py-1 bg-yellow-500/10 text-yellow-500 text-xs font-semibold rounded-lg hover:bg-yellow-500/20 transition border border-yellow-500/20"
+                      >
+                        {peserta.qr_code_url ? 'Download QR' : 'Generate QR'}
+                      </button>
+                      <button
+                        onClick={() => openEditModal(peserta)}
+                        className="px-3 py-1 bg-blue-500/10 text-blue-400 text-xs font-semibold rounded-lg hover:bg-blue-500/20 transition border border-blue-500/20"
+                      >
+                        Edit
+                      </button>
+                      {(peserta.wa_status === 'PENDING' || peserta.wa_status === 'FAILED') && (
+                        <button
+                          onClick={() => handleMarkWASent(peserta)}
+                          className="px-3 py-1 bg-green-500/10 text-green-400 text-xs font-semibold rounded-lg hover:bg-green-500/20 transition border border-green-500/20"
+                        >
+                          Mark SENT
+                        </button>
+                      )}
+                      {peserta.wa_status === 'SENT' && (
+                        <button
+                          onClick={() => handleResetWAStatus(peserta)}
+                          className="px-3 py-1 bg-orange-500/10 text-orange-400 text-xs font-semibold rounded-lg hover:bg-orange-500/20 transition border border-orange-500/20"
+                        >
+                          Reset WA
+                        </button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -397,6 +583,84 @@ export default function PesertaPage() {
       {filteredParticipants.length === 0 && (
         <div className="text-center py-12 bg-[#1a1a1a] rounded-lg border border-yellow-500/20">
           <p className="text-gray-400 text-lg">Tidak ada peserta ditemukan</p>
+        </div>
+      )}
+
+      {/* Edit Modal */}
+      {isEditModalOpen && editingPeserta && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-[#1a1a1a] rounded-lg border border-yellow-500/20 shadow-2xl max-w-md w-full p-6">
+            <h2 className="text-xl font-bold text-yellow-500 mb-4">Edit Peserta</h2>
+            
+            {/* Kode (Read-only) */}
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-400 mb-2">
+                Kode Peserta (Tidak bisa diubah)
+              </label>
+              <div className="px-4 py-2 bg-[#0a0a0a]/50 border border-yellow-500/20 text-yellow-500 font-semibold rounded-lg">
+                {editingPeserta.kode_unik}
+              </div>
+            </div>
+
+            {/* Nama */}
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-400 mb-2">
+                Nama Peserta
+              </label>
+              <input
+                type="text"
+                value={editFormData.nama}
+                onChange={(e) => handleEditFormChange('nama', e.target.value)}
+                className="w-full px-4 py-2 bg-[#0a0a0a] border border-yellow-500/20 text-white rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
+              />
+            </div>
+
+            {/* Nomor Telepon */}
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-400 mb-2">
+                Nomor Telepon
+              </label>
+              <input
+                type="text"
+                value={editFormData.nomor_telepon}
+                onChange={(e) => handleEditFormChange('nomor_telepon', e.target.value)}
+                className="w-full px-4 py-2 bg-[#0a0a0a] border border-yellow-500/20 text-white rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
+              />
+              <p className="text-xs text-orange-400 mt-2">
+                ℹ️ Jika nomor telepon diubah, status WA akan direset ke PENDING
+              </p>
+            </div>
+
+            {/* Alamat */}
+            <div className="mb-6">
+              <label className="block text-sm font-medium text-gray-400 mb-2">
+                Alamat
+              </label>
+              <textarea
+                value={editFormData.alamat}
+                onChange={(e) => handleEditFormChange('alamat', e.target.value)}
+                rows={3}
+                className="w-full px-4 py-2 bg-[#0a0a0a] border border-yellow-500/20 text-white rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent resize-none"
+              />
+            </div>
+
+            {/* Buttons */}
+            <div className="flex gap-3">
+              <button
+                onClick={closeEditModal}
+                className="flex-1 px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white font-semibold rounded-lg transition"
+              >
+                Batal
+              </button>
+              <button
+                onClick={handleUpdatePeserta}
+                disabled={isUpdating}
+                className="flex-1 px-4 py-2 bg-yellow-500 hover:bg-yellow-600 text-black font-semibold rounded-lg transition disabled:bg-gray-700 disabled:text-gray-500 shadow-lg shadow-yellow-500/50"
+              >
+                {isUpdating ? 'Menyimpan...' : 'Simpan Perubahan'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

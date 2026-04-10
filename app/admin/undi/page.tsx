@@ -8,6 +8,7 @@
 import { useEffect, useState } from 'react';
 import type confettiType from 'canvas-confetti';
 import SlotUndian from '@/components/SlotUndian';
+import * as XLSX from 'xlsx';
 
 interface Event {
   id: string;
@@ -41,12 +42,16 @@ interface Winner {
   drawn_at: Date;
   peserta: {
     id: string;
+    kode_unik?: string;
     nama: string;
+    tipe?: string;
     email?: string;
     nomor_telepon?: string;
+    alamat?: string;
   };
   hadiah: {
     nama_hadiah: string;
+    tipe_peserta?: string;
   };
 }
 
@@ -70,6 +75,7 @@ export default function UndiPage() {
   const [showSuccess, setShowSuccess] = useState(false);
   const [lastWinner, setLastWinner] = useState<Participant | null>(null);
   const [prizeRemainingSlots, setPrizeRemainingSlots] = useState<number>(0);
+  const [resettingLottery, setResettingLottery] = useState(false);
 
   useEffect(() => {
     fetchMainEvent();
@@ -355,6 +361,103 @@ export default function UndiPage() {
     setPrizeRemainingSlots(0);
   };
 
+  const exportWinnersToExcel = () => {
+    if (!selectedEvent) return;
+
+    if (winners.length === 0) {
+      alert('Belum ada data pemenang untuk diexport');
+      return;
+    }
+
+    try {
+      const excelData = winners.map((winner, index) => {
+        const tipePesertaRaw = winner.peserta.tipe || winner.hadiah.tipe_peserta || '';
+        const tipePeserta =
+          tipePesertaRaw === 'JAMAAH'
+            ? 'Jamaah'
+            : tipePesertaRaw === 'PESERTA'
+            ? 'Peserta'
+            : '-';
+
+        return {
+          No: index + 1,
+          'Kode Peserta': winner.peserta.kode_unik || '-',
+          'Nama Pemenang': winner.peserta.nama,
+          'Tipe Peserta': tipePeserta,
+          'Nomor Telepon': winner.peserta.nomor_telepon || '-',
+          Alamat: winner.peserta.alamat || '-',
+          'Hadiah Dimenangkan': winner.hadiah.nama_hadiah,
+          'Waktu Undi': new Date(winner.drawn_at).toLocaleString('id-ID'),
+        };
+      });
+
+      const worksheet = XLSX.utils.json_to_sheet(excelData);
+      worksheet['!cols'] = [
+        { wch: 6 },
+        { wch: 14 },
+        { wch: 28 },
+        { wch: 14 },
+        { wch: 18 },
+        { wch: 36 },
+        { wch: 28 },
+        { wch: 24 },
+      ];
+
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, 'Pemenang Undian');
+
+      const today = new Date().toISOString().split('T')[0];
+      const filename = `Pemenang_${selectedEvent.nama_event.replace(/\s+/g, '_')}_${today}.xlsx`;
+      XLSX.writeFile(workbook, filename);
+
+      alert(`Export Excel berhasil: ${filename}`);
+    } catch (error) {
+      console.error('Export winners error:', error);
+      alert('Gagal export data pemenang');
+    }
+  };
+
+  const handleResetLottery = async () => {
+    if (!selectedEvent || resettingLottery) return;
+
+    const confirmed = window.confirm(
+      'Reset undian akan menghapus semua pemenang dan mengembalikan semua kuota hadiah. Lanjutkan?'
+    );
+
+    if (!confirmed) return;
+
+    const pin = window.prompt('Masukkan PIN reset undian:');
+    if (!pin) return;
+
+    setResettingLottery(true);
+    try {
+      const response = await fetch('/api/lottery/reset', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          event_id: selectedEvent.id,
+          pin,
+        }),
+      });
+
+      const data = await response.json();
+      if (!response.ok || !data.success) {
+        alert(`Gagal reset undian: ${data.error || 'Unknown error'}`);
+        return;
+      }
+
+      handleSelesaiUndi();
+      setNewWinners([]);
+      await Promise.all([fetchPrizes(), fetchWinners()]);
+      alert('Undian berhasil direset. Semua peserta bisa diundi lagi.');
+    } catch (error) {
+      console.error('Reset lottery error:', error);
+      alert('Terjadi kesalahan saat reset undian');
+    } finally {
+      setResettingLottery(false);
+    }
+  };
+
   return (
     <div className="space-y-5">
       {selectedEvent && (
@@ -581,7 +684,16 @@ export default function UndiPage() {
                 </div>
               )}
 
-              <h2 className="text-2xl font-bold text-yellow-500 mb-4">Daftar Hadiah</h2>
+              <div className="flex items-center justify-between gap-3 mb-4">
+                <h2 className="text-2xl font-bold text-yellow-500">Daftar Hadiah</h2>
+                <button
+                  onClick={handleResetLottery}
+                  disabled={resettingLottery || drawing}
+                  className="px-4 py-2 text-sm font-semibold rounded-lg border border-red-500/40 bg-red-500/10 text-red-400 hover:bg-red-500/20 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {resettingLottery ? 'Mereset...' : 'Reset Undian'}
+                </button>
+              </div>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {prizes.map((prize) => (
                   <div key={prize.id} className="bg-[#1a1a1a] rounded-lg shadow-lg overflow-hidden border border-yellow-500/20">
@@ -661,7 +773,15 @@ export default function UndiPage() {
           {/* Winners List */}
           {winners.length > 0 && (
             <div>
-              <h2 className="text-2xl font-bold text-yellow-500 mb-4">Daftar Semua Pemenang</h2>
+              <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
+                <h2 className="text-2xl font-bold text-yellow-500">Daftar Semua Pemenang</h2>
+                <button
+                  onClick={exportWinnersToExcel}
+                  className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-semibold rounded-lg transition shadow-lg shadow-green-600/40"
+                >
+                  Export Excel Pemenang
+                </button>
+              </div>
               <div className="bg-[#1a1a1a] rounded-lg shadow-lg overflow-hidden border border-yellow-500/20">
                 <div className="overflow-x-auto">
                   <table className="w-full">
