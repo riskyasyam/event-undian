@@ -462,20 +462,6 @@ export default function UndiPage() {
     <div className="space-y-5">
       {selectedEvent && (
         <>
-          {/* Event Banner Section */}
-          <div className="relative bg-[#1a1a1a] rounded-xl shadow-lg overflow-hidden border border-yellow-500/20">
-            {/* Banner Image */}
-            <div className="relative w-full h-[500px] md:h-[600px] overflow-hidden">
-              <img 
-                src="/images/contoh_banner.jpg" 
-                alt="Event Banner" 
-                className="w-full h-full object-cover"
-              />
-              {/* Overlay gradient for better text readability */}
-              <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent"></div>
-            </div>
-          </div>
-
           {/* Drawing Animation */}
           {animating && (
             <div className="fixed inset-0 bg-black/95 backdrop-blur-sm flex items-center justify-center z-50">
@@ -574,6 +560,9 @@ export default function UndiPage() {
                           <div className="text-5xl font-bold text-white mb-2">
                             {lastWinner.nama}
                           </div>
+                          <div className="text-lg font-medium text-yellow-300 mb-2">
+                            {lastWinner.nomor_telepon || '-'}
+                          </div>
                           <div className="text-xl text-gray-300 mt-4 mb-6">
                             Menjadi pemenang {selectedPrizeForDraw?.nama_hadiah}!
                           </div>
@@ -669,21 +658,6 @@ export default function UndiPage() {
           {/* Prizes Section */}
           {prizes.length > 0 && (
             <div>
-              {/* Warning if lottery is not yet open */}
-              {!lotteryOpen && timeLeft && (
-                <div className="mb-4 bg-amber-500/10 border border-amber-500/20 rounded-lg p-4">
-                  <div className="flex items-center gap-3">
-                    <div className="text-2xl">⏰</div>
-                    <div>
-                      <p className="text-amber-500 font-semibold mb-1">Undian Belum Dibuka</p>
-                      <p className="text-sm text-gray-400">
-                        Waktu tersisa: {timeLeft.days}h {timeLeft.hours}j {timeLeft.minutes}m {timeLeft.seconds}d
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              )}
-
               <div className="flex items-center justify-between gap-3 mb-4">
                 <h2 className="text-2xl font-bold text-yellow-500">Daftar Hadiah</h2>
                 <button

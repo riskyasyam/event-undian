@@ -32,30 +32,61 @@ export interface BulkCreatePesertaInput {
 }
 
 /**
- * Generate unique code for participant (e.g., MU-001, MU-002)
+ * Get current max numeric suffix from kode_unik (MU-001 -> 1)
  */
-async function generateKodeUnik(eventId: string): Promise<string> {
-  const count = await prisma.peserta.count({
-    where: { event_id: eventId },
-  });
-  
-  const nextNumber = count + 1;
+async function getMaxKodeUnikNumber(): Promise<number> {
+  const result = await prisma.$queryRaw<Array<{ max_number: number | null }>>`
+    SELECT MAX(CAST(SUBSTRING(kode_unik FROM 4) AS INTEGER)) AS max_number
+    FROM "peserta"
+    WHERE kode_unik ~ '^MU-[0-9]+$'
+  `;
+
+  return Number(result[0]?.max_number ?? 0);
+}
+
+/**
+ * Generate next unique code for participant (e.g., MU-001, MU-002)
+ */
+async function generateKodeUnik(): Promise<string> {
+  const nextNumber = (await getMaxKodeUnikNumber()) + 1;
   return `MU-${nextNumber.toString().padStart(3, '0')}`;
+}
+
+/**
+ * Detect Prisma unique constraint on kode_unik
+ */
+function isKodeUnikConflict(error: unknown): boolean {
+  if (!(error instanceof Prisma.PrismaClientKnownRequestError)) return false;
+  if (error.code !== 'P2002') return false;
+
+  const target = (error.meta as { target?: string[] } | undefined)?.target;
+  return Array.isArray(target) && target.includes('kode_unik');
 }
 
 /**
  * Create a single participant with auto-generated token and unique code
  */
 export async function createPeserta(data: CreatePesertaInput): Promise<Peserta> {
-  const kode_unik = await generateKodeUnik(data.event_id);
-  
-  return prisma.peserta.create({
-    data: {
-      ...data,
-      kode_unik,
-      token: generateToken(),
-    },
-  });
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const kode_unik = await generateKodeUnik();
+
+    try {
+      return await prisma.peserta.create({
+        data: {
+          ...data,
+          kode_unik,
+          token: generateToken(),
+        },
+      });
+    } catch (error) {
+      if (isKodeUnikConflict(error)) {
+        continue;
+      }
+      throw error;
+    }
+  }
+
+  throw new Error('Gagal membuat kode unik peserta setelah beberapa percobaan');
 }
 
 /**
@@ -63,31 +94,47 @@ export async function createPeserta(data: CreatePesertaInput): Promise<Peserta> 
  * Each participant gets a unique UUID token and sequential code (MU-001, MU-002, etc.)
  */
 export async function bulkCreatePeserta(data: BulkCreatePesertaInput): Promise<number> {
-  // Get current count to generate sequential codes
-  const currentCount = await prisma.peserta.count({
-    where: { event_id: data.event_id },
-  });
-  
-  // Create participants one by one to ensure unique sequential codes
+  // Start from current global maximum to avoid collisions after deletions
+  let nextNumber = (await getMaxKodeUnikNumber()) + 1;
+
+  // Create participants one by one to keep deterministic code assignment
   let createdCount = 0;
   for (let i = 0; i < data.participants.length; i++) {
     const participant = data.participants[i];
-    const sequenceNumber = currentCount + i + 1;
-    const kode_unik = `MU-${sequenceNumber.toString().padStart(3, '0')}`;
-    
-    await prisma.peserta.create({
-      data: {
-        event_id: data.event_id,
-        nama: participant.nama,
-        nomor_telepon: participant.nomor_telepon,
-        alamat: participant.alamat,
-        tipe: data.tipe || TipePeserta.PESERTA,
-        kode_unik,
-        token: generateToken(),
-      },
-    });
-    
-    createdCount++;
+
+    let created = false;
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const kode_unik = `MU-${nextNumber.toString().padStart(3, '0')}`;
+
+      try {
+        await prisma.peserta.create({
+          data: {
+            event_id: data.event_id,
+            nama: participant.nama,
+            nomor_telepon: participant.nomor_telepon,
+            alamat: participant.alamat,
+            tipe: data.tipe || TipePeserta.PESERTA,
+            kode_unik,
+            token: generateToken(),
+          },
+        });
+
+        createdCount++;
+        nextNumber++;
+        created = true;
+        break;
+      } catch (error) {
+        if (isKodeUnikConflict(error)) {
+          nextNumber = (await getMaxKodeUnikNumber()) + 1;
+          continue;
+        }
+        throw error;
+      }
+    }
+
+    if (!created) {
+      throw new Error(`Gagal membuat kode unik peserta untuk ${participant.nama}`);
+    }
   }
 
   return createdCount;

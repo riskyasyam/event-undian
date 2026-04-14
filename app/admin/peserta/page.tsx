@@ -249,6 +249,40 @@ export default function PesertaPage() {
     }
   };
 
+  const handleDeletePeserta = async (peserta: Peserta) => {
+    if (!confirm(`Apakah Anda yakin ingin menghapus peserta "${peserta.nama}"? Tindakan ini tidak dapat dibatalkan.`)) return;
+
+    try {
+      const response = await fetch(`/api/peserta/${peserta.id}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        setParticipants(prev =>
+          prev.filter(p => p.id !== peserta.id)
+        );
+        // Update stats
+        if (stats) {
+          setStats({
+            ...stats,
+            total: stats.total - 1,
+            attended: peserta.status_hadir ? stats.attended - 1 : stats.attended,
+            eligible: peserta.status_hadir && !peserta.sudah_menang ? stats.eligible - 1 : stats.eligible,
+          });
+        }
+        alert('Peserta berhasil dihapus');
+      } else {
+        alert(`Penghapusan gagal: ${data.error}`);
+      }
+    } catch (error) {
+      console.error('Delete error:', error);
+      alert('Penghapusan gagal');
+    }
+  };
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       setSelectedFile(e.target.files[0]);
@@ -571,6 +605,12 @@ export default function PesertaPage() {
                           Reset WA
                         </button>
                       )}
+                      <button
+                        onClick={() => handleDeletePeserta(peserta)}
+                        className="px-3 py-1 bg-red-500/10 text-red-400 text-xs font-semibold rounded-lg hover:bg-red-500/20 transition border border-red-500/20"
+                      >
+                        Hapus
+                      </button>
                     </div>
                   </td>
                 </tr>

@@ -1,7 +1,8 @@
 /**
- * Update or get peserta by ID
+ * Update, get, or delete peserta by ID
  * PUT /api/peserta/[id] - Update peserta
  * GET /api/peserta/[id] - Get peserta details
+ * DELETE /api/peserta/[id] - Delete peserta
  */
 
 import { prisma } from '@/lib/prisma';
@@ -109,6 +110,58 @@ export async function GET(
       {
         success: false,
         error: 'Gagal mengambil data peserta',
+      },
+      { status: 500 }
+    );
+  }
+}
+
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await params;
+
+    // Check if peserta exists
+    const peserta = await prisma.peserta.findUnique({
+      where: { id },
+    });
+
+    if (!peserta) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Peserta tidak ditemukan',
+        },
+        { status: 404 }
+      );
+    }
+
+    // Delete presensi records related to this peserta first
+    await prisma.presensi.deleteMany({
+      where: { peserta_id: id },
+    });
+
+    // Delete the peserta
+    await prisma.peserta.delete({
+      where: { id },
+    });
+
+    return NextResponse.json(
+      {
+        success: true,
+        message: 'Peserta berhasil dihapus',
+        data: peserta,
+      },
+      { status: 200 }
+    );
+  } catch (error) {
+    console.error('Peserta delete error:', error);
+    return NextResponse.json(
+      {
+        success: false,
+        error: 'Gagal menghapus peserta',
       },
       { status: 500 }
     );
