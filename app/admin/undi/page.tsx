@@ -70,7 +70,6 @@ export default function UndiPage() {
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [selectedPrizeForDraw, setSelectedPrizeForDraw] = useState<Hadiah | null>(null);
   const [loadingParticipants, setLoadingParticipants] = useState(false);
-  const [totalEligible, setTotalEligible] = useState(0);
   const [selectedWinner, setSelectedWinner] = useState<Participant | null>(null);
   const [showSuccess, setShowSuccess] = useState(false);
   const [lastWinner, setLastWinner] = useState<Participant | null>(null);
@@ -197,22 +196,11 @@ export default function UndiPage() {
           );
         }
         
-        setTotalEligible(eligible.length);
-        
-        // Limit to 50 participants for smooth slot animation
-        // If more than 50, randomly sample 50 for display
-        // Winner will still be selected from displayed 50
-        let finalParticipants = eligible;
-        if (eligible.length > 50) {
-          finalParticipants = [...eligible].sort(() => Math.random() - 0.5).slice(0, 50);
-        }
-        
-        setParticipants(finalParticipants);
+        setParticipants(eligible);
       }
     } catch (error) {
       console.error('Failed to fetch participants:', error);
       setParticipants([]);
-      setTotalEligible(0);
     } finally {
       setLoadingParticipants(false);
     }
@@ -501,16 +489,7 @@ export default function UndiPage() {
                     </span>
                   </div>
                   <p className="text-gray-400 text-sm">
-                    {loadingParticipants ? 'Memuat peserta...' : (
-                      <>
-                        {totalEligible} {selectedPrizeForDraw.tipe_peserta === 'JAMAAH' ? 'jamaah' : 'peserta'} eligible
-                        {totalEligible > 50 && (
-                          <span className="block mt-1 text-amber-400 text-xs">
-                            Slot menampilkan sample 50 {selectedPrizeForDraw.tipe_peserta === 'JAMAAH' ? 'jamaah' : 'peserta'}. Winner dipilih dari yang ditampilkan.
-                          </span>
-                        )}
-                      </>
-                    )}
+                    {loadingParticipants ? 'Memuat peserta...' : 'Siap untuk diundi'}
                   </p>
                 </div>
 
@@ -552,7 +531,7 @@ export default function UndiPage() {
                     {/* Success Message after winning */}
                     {showSuccess && lastWinner && (
                       <div className="mb-6 animate-fadeIn">
-                        <div className="bg-gradient-to-br from-yellow-500/20 to-yellow-600/10 border-2 border-yellow-500 rounded-2xl p-10 text-center shadow-2xl">
+                        <div className="bg-linear-to-br from-yellow-500/20 to-yellow-600/10 border-2 border-yellow-500 rounded-2xl p-10 text-center shadow-2xl">
                           <div className="text-7xl mb-4">🎉</div>
                           <div className="text-2xl text-yellow-500 mb-3 font-semibold">
                             SELAMAT!
@@ -568,11 +547,7 @@ export default function UndiPage() {
                           </div>
                           
                           {/* Info: sisa eligible dan slot */}
-                          <div className="grid grid-cols-2 gap-4 mb-6">
-                            <div className="text-sm text-gray-400 bg-black/20 rounded-lg p-3">
-                              <div className="text-xs mb-1">Sisa Peserta Eligible</div>
-                              <div className="text-2xl font-bold text-white">{totalEligible}</div>
-                            </div>
+                          <div className="grid gap-4 mb-6">
                             <div className="text-sm text-gray-400 bg-black/20 rounded-lg p-3">
                               <div className="text-xs mb-1">Sisa Slot Hadiah</div>
                               <div className="text-2xl font-bold text-yellow-500">{prizeRemainingSlots}</div>
@@ -598,7 +573,7 @@ export default function UndiPage() {
                       {showSuccess ? (
                         <>
                           {/* Tombol Undi Lagi - hanya jika masih ada slot DAN eligible */}
-                          {prizeRemainingSlots > 0 && totalEligible > 0 ? (
+                          {prizeRemainingSlots > 0 && participants.length > 0 ? (
                             <button
                               onClick={handleUndiLagi}
                               disabled={drawing}
@@ -642,7 +617,7 @@ export default function UndiPage() {
 
           {/* New Winners Announcement */}
           {newWinners.length > 0 && !animating && (
-            <div className="bg-gradient-to-r from-yellow-500 via-yellow-600 to-yellow-500 rounded-xl shadow-lg shadow-yellow-500/50 p-8 text-center">
+            <div className="bg-linear-to-r from-yellow-500 via-yellow-600 to-yellow-500 rounded-xl shadow-lg shadow-yellow-500/50 p-8 text-center">
               <div className="text-7xl mb-4">🎉</div>
               <h2 className="text-4xl font-bold text-black mb-6">Selamat Kepada Pemenang!</h2>
               <div className="space-y-3">
@@ -679,7 +654,7 @@ export default function UndiPage() {
                           alt={prize.nama_hadiah}
                           className="w-full h-full object-cover"
                         />
-                        <div className="absolute inset-0 bg-gradient-to-t from-[#1a1a1a] via-transparent to-transparent"></div>
+                        <div className="absolute inset-0 bg-linear-to-t from-[#1a1a1a] via-transparent to-transparent"></div>
                       </div>
                     )}
                     
@@ -722,7 +697,7 @@ export default function UndiPage() {
                         </div>
                         <div className="w-full bg-yellow-500/10 rounded-full h-2.5">
                           <div
-                            className="bg-gradient-to-r from-yellow-500 to-yellow-600 h-2.5 rounded-full transition-all shadow-sm shadow-yellow-500/50"
+                            className="bg-linear-to-r from-yellow-500 to-yellow-600 h-2.5 rounded-full transition-all shadow-sm shadow-yellow-500/50"
                             style={{
                               width: `${(prize.winnersDrawn / prize.jumlah_pemenang) * 100}%`,
                             }}

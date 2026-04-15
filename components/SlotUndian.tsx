@@ -7,7 +7,7 @@
  * Menampilkan 6 nama sekaligus dengan item tengah sebagai posisi pemenang
  */
 
-import { useState, useEffect, useMemo } from 'react';
+import { useEffect, useState } from 'react';
 
 interface Peserta {
   id: string;
@@ -32,25 +32,20 @@ export default function SlotUndian({ peserta, onWinner, speed = 'NORMAL' }: Slot
   const ITEM_HEIGHT = 60;
   const VISIBLE_ITEMS = 6;
   const CENTER_INDEX = 3;
-  // Dynamic loops based on data size untuk optimize performance
-  const MIN_LOOPS = peserta.length > 50 ? 8 : peserta.length > 20 ? 10 : 12;
+  const BUFFER_ITEMS = 4;
+  const VIRTUAL_ROWS = Math.max(
+    peserta.length * 12,
+    Math.floor(displayOffset / ITEM_HEIGHT) + VISIBLE_ITEMS + BUFFER_ITEMS + 20,
+    120
+  );
   
   // Durasi spin berdasarkan speed setting
   const SPIN_DURATION = speed === 'DRAMATIS' ? 12000 : 4500; // 12s untuk dramatis (4s cepat + 8s pelan), 4.5s untuk normal
 
-  // Buat list panjang dengan looping data untuk animasi spin
-  const expandedList = useMemo(() => {
-    if (peserta.length === 0) return [];
-    
-    const loops = Math.max(MIN_LOOPS, Math.ceil(100 / peserta.length));
-    const expanded = [];
-    
-    for (let i = 0; i < loops; i++) {
-      expanded.push(...peserta);
-    }
-    
-    return expanded;
-  }, [peserta, MIN_LOOPS]);
+  const getParticipantAt = (index: number) => {
+    const normalizedIndex = ((index % peserta.length) + peserta.length) % peserta.length;
+    return peserta[normalizedIndex];
+  };
 
   // Handle tombol Mulai Undian
   const handleSpin = () => {
@@ -64,9 +59,9 @@ export default function SlotUndian({ peserta, onWinner, speed = 'NORMAL' }: Slot
     const randomIndex = Math.floor(Math.random() * peserta.length);
     const selectedWinner = peserta[randomIndex];
 
-    // Cari posisi winner di expanded list (pilih dari loop terakhir)
-    const lastLoopStartIndex = expandedList.length - peserta.length;
-    const targetIndex = lastLoopStartIndex + randomIndex;
+    // Cari posisi winner di virtual sequence yang sangat panjang
+    const currentIndex = Math.floor(offset / ITEM_HEIGHT);
+    const targetIndex = currentIndex + (peserta.length * 8) + randomIndex;
 
     // Hitung offset agar winner tepat di tengah (index 3)
     const targetOffset = (targetIndex * ITEM_HEIGHT) - (CENTER_INDEX * ITEM_HEIGHT);
@@ -222,20 +217,33 @@ export default function SlotUndian({ peserta, onWinner, speed = 'NORMAL' }: Slot
           />
 
           {/* Slot Items */}
-          <div 
-            className={`relative ${!isSpinning ? 'slot-idle' : ''}`}
+          <div
+            className="relative"
             style={{
+              height: `${VIRTUAL_ROWS * ITEM_HEIGHT}px`,
               transformStyle: 'preserve-3d',
               transform: `translateY(-${displayOffset}px)`,
-              transition: !isSpinning ? 'none' : 'none', // Controlled by JS animation
-              willChange: isSpinning ? 'transform' : 'auto', // GPU hint
+              willChange: isSpinning ? 'transform' : 'auto',
             }}
           >
-            {expandedList.map((participant, index) => (
+            {(() => {
+              const startIndex = Math.max(0, Math.floor(displayOffset / ITEM_HEIGHT) - BUFFER_ITEMS);
+              const endIndex = Math.ceil((displayOffset + (VISIBLE_ITEMS * ITEM_HEIGHT)) / ITEM_HEIGHT) + BUFFER_ITEMS;
+              const visibleIndices = [];
+
+              for (let index = startIndex; index <= endIndex; index++) {
+                visibleIndices.push(index);
+              }
+
+              return visibleIndices.map((index) => {
+                const participant = getParticipantAt(index);
+
+                return (
               <div
                 key={`${participant.id}-${index}`}
-                className="flex items-center justify-center px-6 transition-all duration-200"
+                className="absolute left-0 right-0 flex items-center justify-center px-6 transition-all duration-200"
                 style={{
+                  top: `${index * ITEM_HEIGHT}px`,
                   height: `${ITEM_HEIGHT}px`,
                   ...getItemStyle(index),
                 }}
@@ -246,7 +254,9 @@ export default function SlotUndian({ peserta, onWinner, speed = 'NORMAL' }: Slot
                   </div>
                 </div>
               </div>
-            ))}
+                );
+              });
+            })()}
           </div>
         </div>
       </div>
@@ -261,7 +271,7 @@ export default function SlotUndian({ peserta, onWinner, speed = 'NORMAL' }: Slot
             transition-all duration-300 transform
             ${isSpinning 
               ? 'bg-gray-600 cursor-not-allowed opacity-50' 
-              : 'bg-gradient-to-r from-yellow-500 to-yellow-600 hover:from-yellow-600 hover:to-yellow-700 hover:scale-105 hover:shadow-2xl hover:shadow-yellow-500/50'
+              : 'bg-linear-to-r from-yellow-500 to-yellow-600 hover:from-yellow-600 hover:to-yellow-700 hover:scale-105 hover:shadow-2xl hover:shadow-yellow-500/50'
             }
             text-black shadow-xl
           `}
@@ -273,7 +283,7 @@ export default function SlotUndian({ peserta, onWinner, speed = 'NORMAL' }: Slot
       {/* Winner Announcement */}
       {winner && !isSpinning && (
         <div className="animate-fadeIn">
-          <div className="bg-gradient-to-br from-yellow-500/20 to-yellow-600/10 border-2 border-yellow-500 rounded-2xl p-8 text-center shadow-2xl">
+          <div className="bg-linear-to-br from-yellow-500/20 to-yellow-600/10 border-2 border-yellow-500 rounded-2xl p-8 text-center shadow-2xl">
             <div className="text-2xl text-yellow-500 mb-3 font-semibold">
               🎉 SELAMAT 🎉
             </div>
