@@ -20,13 +20,26 @@ interface SlotUndianProps {
   peserta: Peserta[];
   onWinner?: (winner: Peserta) => void;
   speed?: 'NORMAL' | 'DRAMATIS';  // Control spin speed & drama
+  autoStartSignal?: number;
+  showControls?: boolean;
+  showWinnerCard?: boolean;
+  spinButtonLabel?: string;
 }
 
-export default function SlotUndian({ peserta, onWinner, speed = 'NORMAL' }: SlotUndianProps) {
+export default function SlotUndian({
+  peserta,
+  onWinner,
+  speed = 'NORMAL',
+  autoStartSignal,
+  showControls = true,
+  showWinnerCard = true,
+  spinButtonLabel = 'Mulai Undian',
+}: SlotUndianProps) {
   const [isSpinning, setIsSpinning] = useState(false);
   const [winner, setWinner] = useState<Peserta | null>(null);
   const [offset, setOffset] = useState(0);
   const [displayOffset, setDisplayOffset] = useState(0);
+  const showIdlePlaceholder = !isSpinning && !winner;
 
   // Konstanta
   const ITEM_HEIGHT = 60;
@@ -129,6 +142,13 @@ export default function SlotUndian({ peserta, onWinner, speed = 'NORMAL' }: Slot
     setDisplayOffset(0);
     setWinner(null);
   }, [peserta]);
+
+  // Programmatic spin trigger from parent
+  useEffect(() => {
+    if (!autoStartSignal || autoStartSignal <= 0) return;
+    handleSpin();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoStartSignal]);
 
   // Hitung style untuk setiap item berdasarkan posisi relatif ke tengah
   const getItemStyle = (index: number) => {
@@ -237,6 +257,8 @@ export default function SlotUndian({ peserta, onWinner, speed = 'NORMAL' }: Slot
 
               return visibleIndices.map((index) => {
                 const participant = getParticipantAt(index);
+                const isCenterRow = index === Math.floor(displayOffset / ITEM_HEIGHT) + CENTER_INDEX;
+                const displayName = showIdlePlaceholder && isCenterRow ? '...' : participant.nama;
 
                 return (
               <div
@@ -250,7 +272,7 @@ export default function SlotUndian({ peserta, onWinner, speed = 'NORMAL' }: Slot
               >
                 <div className="text-center">
                   <div className="text-lg text-white truncate max-w-full">
-                    {participant.nama}
+                    {displayName}
                   </div>
                 </div>
               </div>
@@ -262,26 +284,28 @@ export default function SlotUndian({ peserta, onWinner, speed = 'NORMAL' }: Slot
       </div>
 
       {/* Control Button */}
-      <div className="text-center mb-6">
-        <button
-          onClick={handleSpin}
-          disabled={isSpinning || peserta.length === 0}
-          className={`
-            px-12 py-4 rounded-xl font-bold text-lg
-            transition-all duration-300 transform
-            ${isSpinning 
-              ? 'bg-gray-600 cursor-not-allowed opacity-50' 
-              : 'bg-linear-to-r from-yellow-500 to-yellow-600 hover:from-yellow-600 hover:to-yellow-700 hover:scale-105 hover:shadow-2xl hover:shadow-yellow-500/50'
-            }
-            text-black shadow-xl
-          `}
-        >
-          {isSpinning ? 'Mengundi...' : 'Mulai Undian'}
-        </button>
-      </div>
+      {showControls && (
+        <div className="text-center mb-6">
+          <button
+            onClick={handleSpin}
+            disabled={isSpinning || peserta.length === 0}
+            className={`
+              px-12 py-4 rounded-xl font-bold text-lg
+              transition-all duration-300 transform
+              ${isSpinning 
+                ? 'bg-gray-600 cursor-not-allowed opacity-50' 
+                : 'bg-linear-to-r from-yellow-500 to-yellow-600 hover:from-yellow-600 hover:to-yellow-700 hover:scale-105 hover:shadow-2xl hover:shadow-yellow-500/50'
+              }
+              text-black shadow-xl
+            `}
+          >
+            {isSpinning ? 'Mengundi...' : spinButtonLabel}
+          </button>
+        </div>
+      )}
 
       {/* Winner Announcement */}
-      {winner && !isSpinning && (
+      {showWinnerCard && winner && !isSpinning && (
         <div className="animate-fadeIn">
           <div className="bg-linear-to-br from-yellow-500/20 to-yellow-600/10 border-2 border-yellow-500 rounded-2xl p-8 text-center shadow-2xl">
             <div className="text-2xl text-yellow-500 mb-3 font-semibold">

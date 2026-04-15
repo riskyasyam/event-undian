@@ -1,0 +1,2 @@
+ALTER TABLE "hadiah"
+ADD COLUMN "mode_undian" VARCHAR(20) NOT NULL DEFAULT 'SATU';

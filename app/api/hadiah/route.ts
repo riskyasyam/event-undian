@@ -14,7 +14,17 @@ export async function POST(request: NextRequest) {
     await requireAuth();
 
     const body = await request.json();
-    const { event_id, nama_hadiah, deskripsi, gambar_url, jumlah_pemenang, urutan, tipe_peserta, kecepatan_undian } = body;
+    const {
+      event_id,
+      nama_hadiah,
+      deskripsi,
+      gambar_url,
+      jumlah_pemenang,
+      urutan,
+      tipe_peserta,
+      kecepatan_undian,
+      mode_undian,
+    } = body;
 
     if (!event_id || !nama_hadiah || !jumlah_pemenang) {
       return NextResponse.json(
@@ -30,7 +40,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const hadiah = await createHadiah({
+    const normalizedModeUndian: 'SATU' | 'SEMUA' = mode_undian === 'SEMUA' ? 'SEMUA' : 'SATU';
+
+    const createPayload = {
       event_id,
       nama_hadiah,
       deskripsi,
@@ -39,7 +51,22 @@ export async function POST(request: NextRequest) {
       urutan: urutan ? parseInt(urutan) : undefined,
       tipe_peserta: tipe_peserta || TipePeserta.PESERTA,
       kecepatan_undian: (kecepatan_undian as KecepatanUndian) || KecepatanUndian.NORMAL,
-    });
+      mode_undian: normalizedModeUndian,
+    };
+
+    let hadiah;
+    try {
+      hadiah = await createHadiah(createPayload);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '';
+      if (!message.includes('Unknown argument `mode_undian`')) {
+        throw error;
+      }
+
+      // Backward-compatible path when Prisma client/database is not yet migrated.
+      const { mode_undian: _unused, ...fallbackPayload } = createPayload;
+      hadiah = await createHadiah(fallbackPayload);
+    }
 
     return NextResponse.json(
       successResponse(hadiah, 'Prize created successfully'),

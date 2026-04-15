@@ -147,28 +147,27 @@ export async function drawLottery(input: DrawLotteryInput): Promise<DrawLotteryR
       }
 
       // 4. Create winner records and update participants
-      const winners = await Promise.all(
-        selectedWinners.map(async (peserta) => {
-          // Create Pemenang record
-          const pemenang = await tx.pemenang.create({
-            data: {
-              peserta_id: peserta.id,
-              hadiah_id: hadiah_id,
-            },
-          });
+      const winners = [];
+      for (const peserta of selectedWinners) {
+        // Create Pemenang record
+        const pemenang = await tx.pemenang.create({
+          data: {
+            peserta_id: peserta.id,
+            hadiah_id: hadiah_id,
+          },
+        });
 
-          // Update Peserta.sudah_menang
-          const updatedPeserta = await tx.peserta.update({
-            where: { id: peserta.id },
-            data: { sudah_menang: true },
-          });
+        // Update Peserta.sudah_menang
+        const updatedPeserta = await tx.peserta.update({
+          where: { id: peserta.id },
+          data: { sudah_menang: true },
+        });
 
-          return {
-            ...updatedPeserta,
-            pemenang,
-          };
-        })
-      );
+        winners.push({
+          ...updatedPeserta,
+          pemenang,
+        });
+      }
 
       return winners;
     });

@@ -88,6 +88,7 @@ model Hadiah {
   urutan           Int        @default(1)  // Order for displaying/drawing
   tipe_peserta     TipePeserta @default(PESERTA)  // Prize type: for PESERTA or JAMAAH
   kecepatan_undian KecepatanUndian @default(NORMAL)  // Lottery speed: NORMAL or DRAMATIS
+  mode_undian      String     @default("SATU") // SATU: one winner per click, SEMUA: auto draw remaining slots in one click
   created_at       DateTime   @default(now())
   updated_at       DateTime   @updatedAt
   

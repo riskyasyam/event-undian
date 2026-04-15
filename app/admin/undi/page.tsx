@@ -25,6 +25,7 @@ interface Hadiah {
   urutan: number;
   tipe_peserta?: string;
   kecepatan_undian?: string;
+  mode_undian?: 'SATU' | 'SEMUA';
   winnersDrawn: number;
   remainingSlots: number;
   isComplete: boolean;
@@ -73,6 +74,9 @@ export default function UndiPage() {
   const [selectedWinner, setSelectedWinner] = useState<Participant | null>(null);
   const [showSuccess, setShowSuccess] = useState(false);
   const [lastWinner, setLastWinner] = useState<Participant | null>(null);
+  const [batchWinners, setBatchWinners] = useState<Participant[]>([]);
+  const [autoSpinSignal, setAutoSpinSignal] = useState(0);
+  const [autoDrawingAll, setAutoDrawingAll] = useState(false);
   const [prizeRemainingSlots, setPrizeRemainingSlots] = useState<number>(0);
   const [resettingLottery, setResettingLottery] = useState(false);
 
@@ -244,6 +248,9 @@ export default function UndiPage() {
     setSelectedWinner(null); // Reset winner
     setShowSuccess(false); // Reset success state
     setLastWinner(null); // Reset last winner
+    setBatchWinners([]);
+    setAutoSpinSignal(0);
+    setAutoDrawingAll(false);
     setPrizeRemainingSlots(prize.remainingSlots); // Set initial remaining slots
     await fetchEligibleParticipants(prize); // Pass prize to filter by type
     // Only show slot after participants are fully loaded
@@ -278,9 +285,6 @@ export default function UndiPage() {
 
       if (data.success) {
         console.log('📥 API Response:', data.data.winners.map((w: any) => w.nama).join(', '));
-        
-        // Trigger confetti
-        triggerConfetti();
 
         // Transform winners data to match expected format
         const transformedWinners = data.data.winners.map((w: any) => ({
@@ -299,36 +303,64 @@ export default function UndiPage() {
 
         console.log('✅ Winners saved:', transformedWinners.map((w: any) => w.peserta.nama).join(', '));
 
-        // Show success message in modal (JANGAN tutup modal)
-        setTimeout(() => {
-          // Use actual winner from API response (bukan dari slot machine state)
-          setLastWinner(transformedWinners[0]?.peserta || null);
-          setShowSuccess(true);
+        // IMMEDIATELY remove pemenang dari local participants untuk mencegah race condition
+        const winnerIds = new Set(transformedWinners.map((w: any) => w.peserta.id));
+        setParticipants((prev) => prev.filter((p) => !winnerIds.has(p.id)));
+
+        // Update remainingSlots setelah undi
+        let newRemainingSlots = 0;
+        setPrizeRemainingSlots((prev) => {
+          newRemainingSlots = Math.max(0, prev - transformedWinners.length);
+          return newRemainingSlots;
+        });
+
+        // Use actual winner from API response
+        const winnerPeserta = transformedWinners[0]?.peserta || null;
+        setLastWinner(winnerPeserta);
+        if (winnerPeserta) {
+          setBatchWinners((prev) => [...prev, winnerPeserta]);
+        }
+
+        const isAllMode = selectedPrizeForDraw?.mode_undian === 'SEMUA';
+        
+        // Refresh prizes & winners list di background (participant sudah dihapus lokal)
+        if (newRemainingSlots > 0) {
+          await Promise.all([
+            fetchPrizes(),
+            fetchWinners()
+          ]);
+        } else {
+          // Last winner - update UI
+          await Promise.all([fetchPrizes(), fetchWinners()]);
+        }
+
+        // Determine next action IMMEDIATELY (no delay)
+        if (isAllMode && newRemainingSlots > 0) {
+          // SEMUA mode: langsung undi lagi tanpa animasi/loading
+          setShowSuccess(false);
+          setAutoDrawingAll(true);
           setDrawing(false);
-          
-          // Update remainingSlots setelah undi
-          const newRemainingSlots = prizeRemainingSlots - transformedWinners.length;
-          setPrizeRemainingSlots(Math.max(0, newRemainingSlots));
-          
-          // Update prizes & winners list
-          fetchPrizes();
-          fetchWinners();
-          
-          // Refresh participants untuk undi berikutnya (only if still have slots)
-          if (selectedPrizeForDraw && newRemainingSlots > 0) {
-            fetchEligibleParticipants(selectedPrizeForDraw);
-          }
-        }, 1000);
+          // Trigger next spin immediately
+          setAutoSpinSignal((prev) => prev + 1);
+        } else {
+          // SATU mode atau pemenang terakhir: Trigger confetti dan tunjukkan success
+          setAutoDrawingAll(false);
+          setDrawing(false);
+          triggerConfetti();
+          setShowSuccess(true);
+        }
       } else {
         alert(`Gagal mengundi: ${data.error}`);
         setDrawing(false);
         setShowSuccess(false);
+        setAutoDrawingAll(false);
       }
     } catch (error) {
       console.error('Draw error:', error);
       alert('Gagal mengundi');
       setDrawing(false);
       setShowSuccess(false);
+      setAutoDrawingAll(false);
     }
   };
 
@@ -339,11 +371,24 @@ export default function UndiPage() {
     // Participants & prizeRemainingSlots sudah di-update otomatis setelah undi
   };
 
+  const handleStartAutoDraw = () => {
+    if (!selectedPrizeForDraw || drawing || autoDrawingAll || prizeRemainingSlots <= 0) return;
+
+    setBatchWinners([]);
+    setShowSuccess(false);
+    setLastWinner(null);
+    setAutoDrawingAll(true);
+    setAutoSpinSignal((prev) => prev + 1);
+  };
+
   const handleSelesaiUndi = () => {
     setShowSlot(false);
     setShowSuccess(false);
     setLastWinner(null);
     setSelectedWinner(null);
+    setBatchWinners([]);
+    setAutoSpinSignal(0);
+    setAutoDrawingAll(false);
     setParticipants([]);
     setSelectedPrizeForDraw(null);
     setPrizeRemainingSlots(0);
@@ -480,13 +525,18 @@ export default function UndiPage() {
                     {selectedPrizeForDraw.nama_hadiah}
                   </h2>
                   <div className="flex justify-center mb-3">
-                    <span className={`px-3 py-1 text-xs font-medium rounded-full border ${
-                      selectedPrizeForDraw.tipe_peserta === 'JAMAAH' 
-                        ? 'bg-purple-500/10 text-purple-500 border-purple-500/20' 
-                        : 'bg-blue-500/10 text-blue-500 border-blue-500/20'
-                    }`}>
-                      Undian untuk: {selectedPrizeForDraw.tipe_peserta === 'JAMAAH' ? 'Jamaah' : 'Peserta Milad'}
-                    </span>
+                    <div className="flex gap-2 flex-wrap justify-center">
+                      <span className={`px-3 py-1 text-xs font-medium rounded-full border ${
+                        selectedPrizeForDraw.tipe_peserta === 'JAMAAH' 
+                          ? 'bg-purple-500/10 text-purple-500 border-purple-500/20' 
+                          : 'bg-blue-500/10 text-blue-500 border-blue-500/20'
+                      }`}>
+                        Undian untuk: {selectedPrizeForDraw.tipe_peserta === 'JAMAAH' ? 'Jamaah' : 'Peserta Milad'}
+                      </span>
+                      <span className="px-3 py-1 text-xs font-medium rounded-full border bg-emerald-500/10 text-emerald-400 border-emerald-500/20">
+                        Mode klik: {selectedPrizeForDraw.mode_undian === 'SEMUA' ? 'Semua langsung' : '1 pemenang'}
+                      </span>
+                    </div>
                   </div>
                   <p className="text-gray-400 text-sm">
                     {loadingParticipants ? 'Memuat peserta...' : 'Siap untuk diundi'}
@@ -494,7 +544,7 @@ export default function UndiPage() {
                 </div>
 
                 {/* Loading State */}
-                {loadingParticipants && (
+                {loadingParticipants && !autoDrawingAll && (
                   <div className="flex justify-center items-center py-20">
                     <div className="text-center">
                       <div className="text-6xl mb-4 animate-spin">⏳</div>
@@ -525,8 +575,8 @@ export default function UndiPage() {
                   </div>
                 )}
 
-                {/* Slot Machine - Only show if participants are loaded and available */}
-                {!loadingParticipants && participants.length > 0 && (
+                {/* Slot Machine - Show ketika participants siap dan tidak loading (atau loading tapi dalam SEMUA mode) */}
+                {(!loadingParticipants || autoDrawingAll) && participants.length > 0 && (
                   <>
                     {/* Success Message after winning */}
                     {showSuccess && lastWinner && (
@@ -536,15 +586,43 @@ export default function UndiPage() {
                           <div className="text-2xl text-yellow-500 mb-3 font-semibold">
                             SELAMAT!
                           </div>
-                          <div className="text-5xl font-bold text-white mb-2">
-                            {lastWinner.nama}
-                          </div>
-                          <div className="text-lg font-medium text-yellow-300 mb-2">
-                            {lastWinner.nomor_telepon || '-'}
-                          </div>
-                          <div className="text-xl text-gray-300 mt-4 mb-6">
-                            Menjadi pemenang {selectedPrizeForDraw?.nama_hadiah}!
-                          </div>
+                          
+                          {/* Conditional: SEMUA mode completed vs SATU mode */}
+                          {selectedPrizeForDraw?.mode_undian === 'SEMUA' && prizeRemainingSlots === 0 ? (
+                            <>
+                              <div className="text-4xl font-bold text-white mb-4">
+                                Kepada {batchWinners.length} Pemenang
+                              </div>
+                              <div className="text-xl text-gray-300 mb-6">
+                                Menjadi pemenang {selectedPrizeForDraw?.nama_hadiah}!
+                              </div>
+                              
+                              {/* Daftar semua pemenang */}
+                              <div className="bg-black/30 rounded-lg p-4 mb-6 text-left max-h-56 overflow-y-auto">
+                                <div className="text-sm font-semibold text-yellow-500 mb-3 text-center">Daftar Pemenang</div>
+                                <div className="space-y-2">
+                                  {batchWinners.map((winner, idx) => (
+                                    <div key={`${winner.id}-${idx}`} className="text-sm">
+                                      <div className="font-medium text-white">{idx + 1}. {winner.nama}</div>
+                                      <div className="text-xs text-yellow-300">{winner.nomor_telepon || '-'}</div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            </>
+                          ) : (
+                            <>
+                              <div className="text-5xl font-bold text-white mb-2">
+                                {lastWinner.nama}
+                              </div>
+                              <div className="text-lg font-medium text-yellow-300 mb-2">
+                                {lastWinner.nomor_telepon || '-'}
+                              </div>
+                              <div className="text-xl text-gray-300 mt-4 mb-6">
+                                Menjadi pemenang {selectedPrizeForDraw?.nama_hadiah}!
+                              </div>
+                            </>
+                          )}
                           
                           {/* Info: sisa eligible dan slot */}
                           <div className="grid gap-4 mb-6">
@@ -564,7 +642,28 @@ export default function UndiPage() {
                           peserta={participants}
                           onWinner={handleSlotWinner}
                           speed={selectedPrizeForDraw?.kecepatan_undian as 'NORMAL' | 'DRAMATIS' || 'NORMAL'}
+                          autoStartSignal={autoSpinSignal}
+                          showControls={selectedPrizeForDraw.mode_undian !== 'SEMUA'}
+                          showWinnerCard={selectedPrizeForDraw.mode_undian !== 'SEMUA'}
+                          spinButtonLabel="Mulai Undian"
                         />
+                      </div>
+                    )}
+
+                    {selectedPrizeForDraw.mode_undian === 'SEMUA' && batchWinners.length > 0 && (
+                      <div className="mb-6 bg-black/20 border border-yellow-500/20 rounded-xl p-4">
+                        <div className="flex items-center justify-between mb-3">
+                          <h4 className="text-sm font-semibold text-yellow-500">Pemenang Terkumpul</h4>
+                          <span className="text-xs text-gray-400">{batchWinners.length} orang</span>
+                        </div>
+                        <div className="max-h-52 overflow-y-auto space-y-2 pr-1">
+                          {batchWinners.map((winner, idx) => (
+                            <div key={`${winner.id}-${idx}`} className="rounded-lg border border-yellow-500/10 bg-black/30 px-3 py-2 text-sm">
+                              <div className="font-semibold text-white">{idx + 1}. {winner.nama}</div>
+                              <div className="text-yellow-300 text-xs mt-0.5">{winner.nomor_telepon || '-'}</div>
+                            </div>
+                          ))}
+                        </div>
                       </div>
                     )}
 
@@ -572,18 +671,23 @@ export default function UndiPage() {
                     <div className="flex gap-3 justify-center flex-wrap">
                       {showSuccess ? (
                         <>
-                          {/* Tombol Undi Lagi - hanya jika masih ada slot DAN eligible */}
-                          {prizeRemainingSlots > 0 && participants.length > 0 ? (
-                            <button
-                              onClick={handleUndiLagi}
-                              disabled={drawing}
-                              className="px-8 py-3 bg-yellow-500 hover:bg-yellow-600 text-black font-bold rounded-lg transition shadow-lg shadow-yellow-500/50 disabled:opacity-50 disabled:cursor-not-allowed"
-                            >
-                              🎰 Undi Lagi ({prizeRemainingSlots} slot tersisa)
-                            </button>
+                          {selectedPrizeForDraw.mode_undian !== 'SEMUA' ? (
+                            prizeRemainingSlots > 0 && participants.length > 0 ? (
+                              <button
+                                onClick={handleUndiLagi}
+                                disabled={drawing}
+                                className="px-8 py-3 bg-yellow-500 hover:bg-yellow-600 text-black font-bold rounded-lg transition shadow-lg shadow-yellow-500/50 disabled:opacity-50 disabled:cursor-not-allowed"
+                              >
+                                🎰 Undi Lagi ({prizeRemainingSlots} slot tersisa)
+                              </button>
+                            ) : (
+                              <div className="px-8 py-3 bg-green-500/10 border-2 border-green-500 text-green-500 font-bold rounded-lg">
+                                ✓ Semua Pemenang Sudah Terundi
+                              </div>
+                            )
                           ) : (
                             <div className="px-8 py-3 bg-green-500/10 border-2 border-green-500 text-green-500 font-bold rounded-lg">
-                              ✓ Semua Pemenang Sudah Terundi
+                              ✓ Undian semua langsung selesai
                             </div>
                           )}
                           
@@ -598,6 +702,15 @@ export default function UndiPage() {
                         </>
                       ) : (
                         <>
+                          {selectedPrizeForDraw.mode_undian === 'SEMUA' && (
+                            <button
+                              onClick={handleStartAutoDraw}
+                              disabled={drawing || autoDrawingAll || prizeRemainingSlots <= 0}
+                              className="px-8 py-3 bg-yellow-500 hover:bg-yellow-600 text-black font-bold rounded-lg transition shadow-lg shadow-yellow-500/50 disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                              {autoDrawingAll ? 'Mengundi Otomatis...' : `Mulai Undi Semua (${prizeRemainingSlots} slot)`}
+                            </button>
+                          )}
                           {/* Tombol Tutup - hanya saat belum undi */}
                           <button
                             onClick={handleSelesaiUndi}

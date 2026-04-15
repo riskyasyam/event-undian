@@ -14,6 +14,7 @@ export interface CreateHadiahInput {
   urutan?: number;
   tipe_peserta?: TipePeserta;
   kecepatan_undian?: KecepatanUndian;
+  mode_undian?: 'SATU' | 'SEMUA';
 }
 
 export interface UpdateHadiahInput {
@@ -24,6 +25,7 @@ export interface UpdateHadiahInput {
   urutan?: number;
   tipe_peserta?: TipePeserta;
   kecepatan_undian?: KecepatanUndian;
+  mode_undian?: 'SATU' | 'SEMUA';
 }
 
 /**
