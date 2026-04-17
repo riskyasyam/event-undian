@@ -44,6 +44,7 @@ export default function PresensiPage() {
   const [submitting, setSubmitting] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [resettingPresensi, setResettingPresensi] = useState(false);
+  const [markingAllPresensi, setMarkingAllPresensi] = useState(false);
   
   // Form states
   const [kodePeserta, setKodePeserta] = useState('');
@@ -355,6 +356,51 @@ export default function PresensiPage() {
     }
   };
 
+  const handleMarkAllPresensi = async () => {
+    if (!selectedEvent || markingAllPresensi) return;
+
+    const confirmed = window.confirm(
+      'Semua peserta akan dipresensikan manual untuk keperluan testing. Lanjutkan?'
+    );
+    if (!confirmed) return;
+
+    const pin = window.prompt('Masukkan PIN presensi semua peserta:');
+    if (!pin) return;
+
+    setMarkingAllPresensi(true);
+    setErrorMessage('');
+    setSuccessMessage('');
+
+    try {
+      const response = await fetch('/api/presensi/mark-all', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          event_id: selectedEvent.id,
+          pin,
+        }),
+      });
+
+      const data = await response.json();
+      if (!response.ok || !data.success) {
+        alert(`Gagal presensi semua peserta: ${data.error || 'Unknown error'}`);
+        return;
+      }
+
+      await fetchPresensi();
+      setKodePeserta('');
+      setErrorMessage('');
+      setSuccessMessage('✓ Semua peserta berhasil dipresensikan manual untuk testing.');
+      setTimeout(() => setSuccessMessage(''), 5000);
+      alert('Semua peserta berhasil dipresensikan manual.');
+    } catch (error) {
+      console.error('Mark all presensi error:', error);
+      alert('Terjadi kesalahan saat memproses presensi semua peserta');
+    } finally {
+      setMarkingAllPresensi(false);
+    }
+  };
+
   if (loading || !selectedEvent) {
     return (
       <div className="text-center py-12">
@@ -399,8 +445,15 @@ export default function PresensiPage() {
       {/* Action Buttons */}
       <div className="flex justify-end gap-3 flex-wrap">
         <button
+          onClick={handleMarkAllPresensi}
+          disabled={markingAllPresensi || resettingPresensi || submitting || isProcessing}
+          className="flex items-center gap-2 px-4 md:px-6 py-2 md:py-3 bg-yellow-500/20 hover:bg-yellow-500/30 text-yellow-300 border border-yellow-500/40 font-semibold rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed text-sm md:text-base"
+        >
+          {markingAllPresensi ? 'Memproses...' : 'Presensi Semua (Testing)'}
+        </button>
+        <button
           onClick={handleResetPresensi}
-          disabled={resettingPresensi || submitting || isProcessing}
+          disabled={resettingPresensi || markingAllPresensi || submitting || isProcessing}
           className="flex items-center gap-2 px-4 md:px-6 py-2 md:py-3 bg-red-600/20 hover:bg-red-600/30 text-red-400 border border-red-500/40 font-semibold rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed text-sm md:text-base"
         >
           {resettingPresensi ? 'Mereset...' : 'Reset Presensi'}

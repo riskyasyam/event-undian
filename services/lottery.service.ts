@@ -298,6 +298,38 @@ export async function resetLotteryForEvent(eventId: string): Promise<boolean> {
 }
 
 /**
+ * Reset lottery results for a specific prize
+ * WARNING: This deletes winners for the prize and resets peserta.sudah_menang for those winners
+ */
+export async function resetLotteryForPrize(hadiahId: string): Promise<boolean> {
+  try {
+    await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+      const winners = await tx.pemenang.findMany({
+        where: { hadiah_id: hadiahId },
+        select: { peserta_id: true },
+      });
+
+      await tx.pemenang.deleteMany({
+        where: { hadiah_id: hadiahId },
+      });
+
+      const pesertaIds = [...new Set(winners.map((winner) => winner.peserta_id))];
+      if (pesertaIds.length > 0) {
+        await tx.peserta.updateMany({
+          where: { id: { in: pesertaIds } },
+          data: { sudah_menang: false },
+        });
+      }
+    });
+
+    return true;
+  } catch (error) {
+    console.error('Failed to reset prize lottery:', error);
+    return false;
+  }
+}
+
+/**
  * Get lottery statistics for an event
  */
 export async function getLotteryStats(eventId: string) {

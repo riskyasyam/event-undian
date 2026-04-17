@@ -1,12 +1,12 @@
 /**
  * Lottery Reset API Route
- * POST /api/lottery/reset - Reset all lottery winners for an event
+ * POST /api/lottery/reset - Reset lottery winners for event or specific prize
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
-import { resetLotteryForEvent } from '@/services/lottery.service';
+import { resetLotteryForEvent, resetLotteryForPrize } from '@/services/lottery.service';
 import { errorResponse, successResponse } from '@/lib/utils';
 
 const DEFAULT_RESET_PIN = '484210';
@@ -16,7 +16,7 @@ export async function POST(request: NextRequest) {
     await requireAuth();
 
     const body = await request.json();
-    const { event_id, pin } = body;
+    const { event_id, hadiah_id, pin } = body;
 
     if (!event_id) {
       return NextResponse.json(
@@ -49,6 +49,43 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         errorResponse('Event not found'),
         { status: 404 }
+      );
+    }
+
+    if (hadiah_id) {
+      const hadiah = await prisma.hadiah.findFirst({
+        where: {
+          id: hadiah_id,
+          event_id,
+        },
+        select: { id: true, nama_hadiah: true },
+      });
+
+      if (!hadiah) {
+        return NextResponse.json(
+          errorResponse('Hadiah not found for this event'),
+          { status: 404 }
+        );
+      }
+
+      const resetPrizeSuccess = await resetLotteryForPrize(hadiah_id);
+      if (!resetPrizeSuccess) {
+        return NextResponse.json(
+          errorResponse('Failed to reset prize lottery'),
+          { status: 500 }
+        );
+      }
+
+      return NextResponse.json(
+        successResponse(
+          {
+            event_id: event.id,
+            event_name: event.nama_event,
+            hadiah_id: hadiah.id,
+            hadiah_name: hadiah.nama_hadiah,
+          },
+          'Undian hadiah berhasil direset. Hadiah ini bisa diundi kembali.'
+        )
       );
     }
 

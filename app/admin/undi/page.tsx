@@ -6,7 +6,6 @@
  */
 
 import { useEffect, useState } from 'react';
-import type confettiType from 'canvas-confetti';
 import SlotUndian from '@/components/SlotUndian';
 import * as XLSX from 'xlsx';
 
@@ -60,6 +59,7 @@ export default function UndiPage() {
   const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
   const [prizes, setPrizes] = useState<Hadiah[]>([]);
   const [winners, setWinners] = useState<Winner[]>([]);
+  const [initialLoading, setInitialLoading] = useState(true);
   const [drawing, setDrawing] = useState(false);
   const [animating, setAnimating] = useState(false);
   const [newWinners, setNewWinners] = useState<Winner[]>([]);
@@ -79,6 +79,8 @@ export default function UndiPage() {
   const [autoDrawingAll, setAutoDrawingAll] = useState(false);
   const [prizeRemainingSlots, setPrizeRemainingSlots] = useState<number>(0);
   const [resettingLottery, setResettingLottery] = useState(false);
+  const [resettingPrizeId, setResettingPrizeId] = useState<string | null>(null);
+  const [openingPrizeId, setOpeningPrizeId] = useState<string | null>(null);
 
   useEffect(() => {
     fetchMainEvent();
@@ -86,9 +88,17 @@ export default function UndiPage() {
 
   useEffect(() => {
     if (selectedEvent) {
-      fetchPrizes();
-      fetchWinners();
-      checkLotteryTime();
+      const loadInitialUndianData = async () => {
+        setInitialLoading(true);
+        try {
+          await Promise.all([fetchPrizes(), fetchWinners()]);
+          checkLotteryTime();
+        } finally {
+          setInitialLoading(false);
+        }
+      };
+
+      loadInitialUndianData();
     }
   }, [selectedEvent]);
 
@@ -135,9 +145,12 @@ export default function UndiPage() {
       if (data.success && data.data.length > 0) {
         // Auto-select first event (Milad MU Travel)
         setSelectedEvent(data.data[0]);
+      } else {
+        setInitialLoading(false);
       }
     } catch (error) {
       console.error('Failed to fetch event:', error);
+      setInitialLoading(false);
     }
   };
 
@@ -243,6 +256,7 @@ export default function UndiPage() {
   };
 
   const handleOpenSlot = async (prize: Hadiah) => {
+    setOpeningPrizeId(prize.id);
     setSelectedPrizeForDraw(prize);
     setParticipants([]); // Reset participants first
     setSelectedWinner(null); // Reset winner
@@ -256,6 +270,7 @@ export default function UndiPage() {
     // Only show slot after participants are fully loaded
     setTimeout(() => {
       setShowSlot(true);
+      setOpeningPrizeId(null);
     }, 100);
   };
 
@@ -491,10 +506,62 @@ export default function UndiPage() {
     }
   };
 
+  const handleResetPrizeLottery = async (prize: Hadiah) => {
+    if (!selectedEvent || resettingPrizeId) return;
+
+    const confirmed = window.confirm(
+      `Reset undian untuk hadiah \"${prize.nama_hadiah}\"? Pemenang hadiah ini akan dihapus dan bisa diundi ulang.`
+    );
+    if (!confirmed) return;
+
+    const pin = window.prompt('Masukkan PIN reset hadiah:');
+    if (!pin) return;
+
+    setResettingPrizeId(prize.id);
+    try {
+      const response = await fetch('/api/lottery/reset', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          event_id: selectedEvent.id,
+          hadiah_id: prize.id,
+          pin,
+        }),
+      });
+
+      const data = await response.json();
+      if (!response.ok || !data.success) {
+        alert(`Gagal reset hadiah: ${data.error || 'Unknown error'}`);
+        return;
+      }
+
+      if (selectedPrizeForDraw?.id === prize.id) {
+        handleSelesaiUndi();
+      }
+
+      setNewWinners([]);
+      await Promise.all([fetchPrizes(), fetchWinners()]);
+      alert(`Undian hadiah \"${prize.nama_hadiah}\" berhasil direset.`);
+    } catch (error) {
+      console.error('Reset prize lottery error:', error);
+      alert('Terjadi kesalahan saat reset hadiah');
+    } finally {
+      setResettingPrizeId(null);
+    }
+  };
+
+  if (initialLoading || !selectedEvent) {
+    return (
+      <div className="text-center py-12">
+        <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-4 border-yellow-500"></div>
+        <p className="mt-4 text-yellow-400 font-medium">Loading...</p>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-5">
-      {selectedEvent && (
-        <>
+      <>
           {/* Drawing Animation */}
           {animating && (
             <div className="fixed inset-0 bg-black/95 backdrop-blur-sm flex items-center justify-center z-50">
@@ -699,6 +766,13 @@ export default function UndiPage() {
                           >
                             Selesai
                           </button>
+                          <button
+                            onClick={() => selectedPrizeForDraw && handleResetPrizeLottery(selectedPrizeForDraw)}
+                            disabled={drawing || !selectedPrizeForDraw || resettingPrizeId === selectedPrizeForDraw?.id}
+                            className="px-8 py-3 text-white font-semibold rounded-lg border border-red-500/40 bg-red-500/30 hover:bg-red-500/40 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            {resettingPrizeId === selectedPrizeForDraw?.id ? 'Mereset...' : 'Reset Hadiah'}
+                          </button>
                         </>
                       ) : (
                         <>
@@ -818,13 +892,31 @@ export default function UndiPage() {
                         </div>
                       </div>
 
-                      <button
-                        onClick={() => handleOpenSlot(prize)}
-                        disabled={prize.isComplete || drawing}
-                        className="w-full px-4 py-2.5 bg-yellow-500 hover:bg-yellow-600 text-black text-sm font-semibold rounded-lg transition disabled:bg-gray-700 disabled:text-gray-500 disabled:cursor-not-allowed shadow-lg shadow-yellow-500/50 disabled:shadow-none"
-                      >
-                        {prize.isComplete ? 'Semua Pemenang Terundi' : `Undi Pemenang`}
-                      </button>
+                      {prize.isComplete ? (
+                        <div className="grid grid-cols-2 gap-2">
+                          <button
+                            disabled
+                            className="w-full px-4 py-2.5 bg-gray-700 text-gray-300 text-sm font-semibold rounded-lg cursor-not-allowed"
+                          >
+                            Semua Pemenang Terundi
+                          </button>
+                          <button
+                            onClick={() => handleResetPrizeLottery(prize)}
+                            disabled={drawing || resettingPrizeId === prize.id}
+                            className="w-full px-4 py-2.5 border border-red-500/40 bg-red-500/20 hover:bg-red-500/30 text-red-300 text-sm font-semibold rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            {resettingPrizeId === prize.id ? 'Mereset...' : 'Reset'}
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => handleOpenSlot(prize)}
+                          disabled={drawing || openingPrizeId === prize.id}
+                          className="w-full px-4 py-2.5 bg-yellow-500 hover:bg-yellow-600 text-black text-sm font-semibold rounded-lg transition disabled:bg-gray-700 disabled:text-gray-500 disabled:cursor-not-allowed shadow-lg shadow-yellow-500/50 disabled:shadow-none"
+                        >
+                          {openingPrizeId === prize.id ? 'Membuka Undian...' : 'Undi Pemenang'}
+                        </button>
+                      )}
                     </div>
                   </div>
                 ))}
@@ -892,8 +984,7 @@ export default function UndiPage() {
               </a>
             </div>
           )}
-        </>
-      )}
+      </>
     </div>
   );
 }
