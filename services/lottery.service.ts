@@ -204,18 +204,35 @@ export async function getWinnersByHadiah(hadiahId: string) {
 /**
  * Get all winners for an event
  */
-export async function getWinnersByEvent(eventId: string) {
+export async function getWinnersByEvent(eventId: string, limit?: number) {
   return prisma.pemenang.findMany({
     where: {
       hadiah: {
         event_id: eventId,
       },
     },
-    include: {
-      peserta: true,
-      hadiah: true,
+    select: {
+      id: true,
+      drawn_at: true,
+      peserta: {
+        select: {
+          id: true,
+          kode_unik: true,
+          nama: true,
+          tipe: true,
+          nomor_telepon: true,
+          alamat: true,
+        },
+      },
+      hadiah: {
+        select: {
+          nama_hadiah: true,
+          tipe_peserta: true,
+        },
+      },
     },
     orderBy: { drawn_at: 'desc' },
+    ...(typeof limit === 'number' && limit > 0 ? { take: limit } : {}),
   });
 }
 

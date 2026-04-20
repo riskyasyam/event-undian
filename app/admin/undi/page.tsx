@@ -158,7 +158,7 @@ export default function UndiPage() {
     if (!selectedEvent) return;
 
     try {
-      const response = await fetch(`/api/hadiah/event/${selectedEvent.id}`);
+      const response = await fetch(`/api/hadiah/event/${selectedEvent.id}?images=proxy`);
       const data = await response.json();
 
       if (data.success) {
@@ -173,7 +173,7 @@ export default function UndiPage() {
     if (!selectedEvent) return;
 
     try {
-      const response = await fetch(`/api/lottery/winners/${selectedEvent.id}`);
+      const response = await fetch(`/api/lottery/winners/${selectedEvent.id}?limit=300`);
       const data = await response.json();
 
       if (data.success) {
@@ -191,7 +191,8 @@ export default function UndiPage() {
     try {
       // Determine tipe based on prize, or fetch all if no prize specified
       const tipeParam = prize ? `?tipe=${prize.tipe_peserta || 'PESERTA'}` : '';
-      const response = await fetch(`/api/peserta/event/${selectedEvent.id}${tipeParam}`);
+      const paginationParam = `${tipeParam ? '&' : '?'}page=1&pageSize=5000`;
+      const response = await fetch(`/api/peserta/event/${selectedEvent.id}${tipeParam}${paginationParam}`);
       const data = await response.json();
 
       if (data.success) {
@@ -585,6 +586,7 @@ export default function UndiPage() {
                     <img 
                       src={selectedPrizeForDraw.gambar_url} 
                       alt={selectedPrizeForDraw.nama_hadiah}
+                        loading="lazy"
                       className="w-24 h-24 object-cover rounded-lg mx-auto mb-3 border-2 border-yellow-500"
                     />
                   )}
@@ -839,6 +841,7 @@ export default function UndiPage() {
                         <img 
                           src={prize.gambar_url} 
                           alt={prize.nama_hadiah}
+                          loading="lazy"
                           className="w-full h-full object-cover"
                         />
                         <div className="absolute inset-0 bg-linear-to-t from-[#1a1a1a] via-transparent to-transparent"></div>

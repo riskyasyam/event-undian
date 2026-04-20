@@ -66,7 +66,7 @@ export default function HadiahPage() {
 
     setLoading(true);
     try {
-      const response = await fetch(`/api/hadiah/event/${selectedEvent.id}`);
+      const response = await fetch(`/api/hadiah/event/${selectedEvent.id}?images=proxy`);
       const data = await response.json();
 
       if (data.success) {
@@ -180,7 +180,11 @@ export default function HadiahPage() {
         body: JSON.stringify({
           nama_hadiah: formData.get('nama_hadiah'),
           deskripsi: formData.get('deskripsi'),
-          gambar_url: imageBase64 || editingPrize.gambar_url || null,
+          gambar_url:
+            imageBase64 ||
+            (editingPrize.gambar_url && !editingPrize.gambar_url.startsWith('/api/hadiah/')
+              ? editingPrize.gambar_url
+              : undefined),
           jumlah_pemenang: parseInt(formData.get('jumlah_pemenang') as string),
           urutan: parseInt(formData.get('urutan') as string),
           tipe_peserta: formData.get('tipe_peserta') || 'PESERTA',
@@ -254,6 +258,7 @@ export default function HadiahPage() {
                   <img 
                     src={prize.gambar_url} 
                     alt={prize.nama_hadiah}
+                    loading="lazy"
                     className="w-full h-full object-cover"
                   />
                   <div className="absolute inset-0 bg-linear-to-t from-[#1a1a1a] via-transparent to-transparent"></div>

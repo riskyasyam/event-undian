@@ -19,7 +19,13 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     await requireAuth();
 
     const { eventId } = await params;
-    const winners = await getWinnersByEvent(eventId);
+    const { searchParams } = new URL(request.url);
+    const limitParam = searchParams.get('limit');
+    const limit = limitParam ? Number(limitParam) : undefined;
+    const winners = await getWinnersByEvent(
+      eventId,
+      Number.isFinite(limit) && (limit || 0) > 0 ? limit : undefined
+    );
 
     return NextResponse.json(successResponse(winners));
   } catch (error) {

@@ -20,7 +20,10 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     await requireAuth();
 
     const { eventId } = await params;
-    const prizes = await getHadiahWithWinnerCounts(eventId);
+    const { searchParams } = new URL(request.url);
+    const imageModeParam = searchParams.get('images');
+    const imageMode = imageModeParam === 'full' || imageModeParam === 'none' ? imageModeParam : 'proxy';
+    const prizes = await getHadiahWithWinnerCounts(eventId, { imageMode });
 
     return NextResponse.json(successResponse(prizes));
   } catch (error) {

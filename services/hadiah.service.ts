@@ -28,6 +28,10 @@ export interface UpdateHadiahInput {
   mode_undian?: 'SATU' | 'SEMUA';
 }
 
+export interface GetHadiahOptions {
+  imageMode?: 'full' | 'proxy' | 'none';
+}
+
 /**
  * Create a new prize
  */
@@ -79,15 +83,46 @@ export async function getHadiahWithWinners(id: string) {
 /**
  * Get all prizes with winner counts for an event
  */
-export async function getHadiahWithWinnerCounts(eventId: string) {
+export async function getHadiahWithWinnerCounts(eventId: string, options: GetHadiahOptions = {}) {
+  const imageMode = options.imageMode || 'proxy';
+
   const prizes = await prisma.hadiah.findMany({
     where: { event_id: eventId },
+    select: {
+      id: true,
+      event_id: true,
+      nama_hadiah: true,
+      deskripsi: true,
+      jumlah_pemenang: true,
+      urutan: true,
+      tipe_peserta: true,
+      kecepatan_undian: true,
+      mode_undian: true,
+      created_at: true,
+      updated_at: true,
+      ...(imageMode === 'full' ? { gambar_url: true } : {}),
+    },
     orderBy: { urutan: 'asc' },
   });
 
   if (prizes.length === 0) {
     return [];
   }
+
+  const prizeIdsWithImage =
+    imageMode === 'proxy'
+      ? new Set(
+          (
+            await prisma.hadiah.findMany({
+              where: {
+                event_id: eventId,
+                NOT: { gambar_url: null },
+              },
+              select: { id: true },
+            })
+          ).map((item) => item.id)
+        )
+      : null;
 
   const prizeIds = prizes.map((prize) => prize.id);
   const winnerCounts = await prisma.pemenang.groupBy({
@@ -108,9 +143,16 @@ export async function getHadiahWithWinnerCounts(eventId: string) {
 
   return prizes.map((prize) => {
     const winnersDrawn = winnerCountMap.get(prize.id) ?? 0;
+    const mappedImageUrl =
+      imageMode === 'none'
+        ? null
+        : imageMode === 'proxy'
+          ? (prizeIdsWithImage?.has(prize.id) ? `/api/hadiah/${prize.id}/image` : null)
+          : ('gambar_url' in prize ? prize.gambar_url : null);
 
     return {
       ...prize,
+      gambar_url: mappedImageUrl,
       winnersDrawn,
       remainingSlots: prize.jumlah_pemenang - winnersDrawn,
       isComplete: winnersDrawn >= prize.jumlah_pemenang,
