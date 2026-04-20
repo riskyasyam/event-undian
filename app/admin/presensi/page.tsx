@@ -37,9 +37,13 @@ interface Stats {
 }
 
 export default function PresensiPage() {
+  const ITEMS_PER_PAGE = 10;
   const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
   const [presensiList, setPresensiList] = useState<PresensiItem[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
+  const [totalPresensi, setTotalPresensi] = useState(0);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -67,9 +71,15 @@ export default function PresensiPage() {
 
   useEffect(() => {
     if (selectedEvent) {
+      setCurrentPage(1);
+    }
+  }, [selectedEvent?.id]);
+
+  useEffect(() => {
+    if (selectedEvent) {
       fetchPresensi();
     }
-  }, [selectedEvent]);
+  }, [selectedEvent, currentPage]);
 
   const fetchMainEvent = async () => {
     try {
@@ -88,12 +98,16 @@ export default function PresensiPage() {
     if (!selectedEvent) return;
 
     try {
-      const response = await fetch(`/api/presensi/event/${selectedEvent.id}`);
+      const response = await fetch(
+        `/api/presensi/event/${selectedEvent.id}?page=${currentPage}&pageSize=${ITEMS_PER_PAGE}`
+      );
       const data = await response.json();
 
       if (data.success) {
         setPresensiList(data.data.presensi);
         setStats(data.data.stats);
+        setTotalPresensi(data.data.total_presensi || 0);
+        setTotalPages(data.data.pagination?.totalPages || 1);
       }
     } catch (error) {
       console.error('Failed to fetch presensi:', error);
@@ -249,34 +263,61 @@ export default function PresensiPage() {
     });
   };
 
+  const getVisiblePages = () => {
+    if (totalPages <= 5) {
+      return Array.from({ length: totalPages }, (_, index) => index + 1);
+    }
+
+    if (currentPage <= 3) {
+      return [1, 2, 3, 4, 5];
+    }
+
+    if (currentPage >= totalPages - 2) {
+      return [totalPages - 4, totalPages - 3, totalPages - 2, totalPages - 1, totalPages];
+    }
+
+    return [currentPage - 2, currentPage - 1, currentPage, currentPage + 1, currentPage + 2];
+  };
+
   const exportToExcel = async () => {
     if (!selectedEvent) return;
 
     try {
-      // Fetch all peserta for this event (PESERTA only, exclude JAMAAH)
-      const response = await fetch(`/api/peserta/event/${selectedEvent.id}?tipe=PESERTA`);
+      // Fetch all presensi records for this event (PESERTA only)
+      const response = await fetch(`/api/presensi/event/${selectedEvent.id}?all=true`);
       const data = await response.json();
 
       if (!data.success) {
-        alert('Gagal mengambil data peserta');
+        alert('Gagal mengambil data presensi');
         return;
       }
 
-      const allPeserta = data.data.participants;
+      const allPresensi = [...data.data.presensi].sort((a: PresensiItem, b: PresensiItem) => {
+        const getCodeNumber = (kode: string) => {
+          const match = kode.match(/(\d+)/);
+          return match ? Number(match[1]) : Number.MAX_SAFE_INTEGER;
+        };
 
-      // Create Excel data with presensi status
-      const excelData = allPeserta.map((peserta: any) => {
-        // Find if this peserta has presensi
-        const presensi = presensiList.find((p) => p.peserta.id === peserta.id);
+        const aNumber = getCodeNumber(a.peserta.kode_unik || '');
+        const bNumber = getCodeNumber(b.peserta.kode_unik || '');
 
+        if (aNumber !== bNumber) {
+          return aNumber - bNumber;
+        }
+
+        return (a.peserta.kode_unik || '').localeCompare(b.peserta.kode_unik || '');
+      });
+
+      // Create Excel data directly from all presensi records
+      const excelData = allPresensi.map((presensi: PresensiItem) => {
         return {
-          'Kode Peserta': peserta.kode_unik,
-          'Nama': peserta.nama,
-          'No. Telepon': peserta.nomor_telepon,
-          'Alamat': peserta.alamat,
-          'Status Presensi': presensi ? 'Sudah Presensi' : 'Belum Presensi',
-          'Waktu Presensi': presensi ? formatDate(presensi.waktu_hadir) : '-',
-          'Metode': presensi ? (presensi.metode === 'qrcode' ? 'QR Code' : 'Manual') : '-',
+          'Kode Peserta': presensi.peserta.kode_unik,
+          'Nama': presensi.peserta.nama,
+          'No. Telepon': presensi.peserta.nomor_telepon,
+          'Alamat': presensi.peserta.alamat,
+          'Status Presensi': 'Sudah Presensi',
+          'Waktu Presensi': formatDate(presensi.waktu_hadir),
+          'Metode': presensi.metode === 'qrcode' ? 'QR Code' : 'Manual',
         };
       });
 
@@ -347,6 +388,7 @@ export default function PresensiPage() {
       setErrorMessage('');
       setSuccessMessage('✓ Presensi berhasil direset. Semua peserta kembali belum hadir.');
       setTimeout(() => setSuccessMessage(''), 5000);
+      setCurrentPage(1);
       alert('Presensi berhasil direset.');
     } catch (error) {
       console.error('Reset presensi error:', error);
@@ -392,6 +434,7 @@ export default function PresensiPage() {
       setErrorMessage('');
       setSuccessMessage('✓ Semua peserta berhasil dipresensikan manual untuk testing.');
       setTimeout(() => setSuccessMessage(''), 5000);
+      setCurrentPage(1);
       alert('Semua peserta berhasil dipresensikan manual.');
     } catch (error) {
       console.error('Mark all presensi error:', error);
@@ -556,8 +599,10 @@ export default function PresensiPage() {
       {/* Recent Presensi List */}
       <div className="bg-[#1a1a1a] rounded-lg shadow-lg overflow-hidden border border-yellow-500/20">
         <div className="px-4 md:px-6 py-4 border-b border-yellow-500/20">
-          <h2 className="text-lg md:text-xl font-bold text-yellow-500">Daftar Presensi Terbaru</h2>
-          <p className="text-xs md:text-sm text-gray-400 mt-1">Total: {presensiList.length} presensi</p>
+          <h2 className="text-lg md:text-xl font-bold text-yellow-500">Daftar Presensi</h2>
+          <p className="text-xs md:text-sm text-gray-400 mt-1">
+            Menampilkan {presensiList.length} dari {totalPresensi} presensi
+          </p>
         </div>
         
         {/* Mobile View - Cards */}
@@ -620,6 +665,46 @@ export default function PresensiPage() {
             </tbody>
           </table>
         </div>
+
+        {totalPresensi > 0 && (
+          <div className="px-4 md:px-6 py-4 border-t border-yellow-500/20 flex flex-col md:flex-row items-center justify-between gap-4">
+            <div className="text-xs md:text-sm text-gray-400">
+              Halaman {currentPage} dari {totalPages}
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2 justify-center">
+              <button
+                onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+                disabled={currentPage === 1}
+                className="px-3 py-2 bg-[#0a0a0a] text-gray-300 border border-yellow-500/20 rounded-lg hover:border-yellow-500/40 transition disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                Sebelumnya
+              </button>
+
+              {getVisiblePages().map((page) => (
+                <button
+                  key={page}
+                  onClick={() => setCurrentPage(page)}
+                  className={`w-10 h-10 rounded-lg text-sm font-semibold transition ${
+                    currentPage === page
+                      ? 'bg-yellow-500 text-black shadow-lg shadow-yellow-500/40'
+                      : 'bg-[#0a0a0a] text-gray-300 border border-yellow-500/20 hover:border-yellow-500/40'
+                  }`}
+                >
+                  {page}
+                </button>
+              ))}
+
+              <button
+                onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
+                disabled={currentPage === totalPages}
+                className="px-3 py-2 bg-[#0a0a0a] text-gray-300 border border-yellow-500/20 rounded-lg hover:border-yellow-500/40 transition disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                Berikutnya
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {presensiList.length === 0 && (

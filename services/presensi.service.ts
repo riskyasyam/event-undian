@@ -3,12 +3,21 @@
  */
 
 import { prisma } from '@/lib/prisma';
-import { Presensi, Prisma } from '@prisma/client';
+import { Presensi, Prisma, TipePeserta } from '@prisma/client';
 
 // Type for Presensi with Peserta relation
 export type PresensiWithPeserta = Prisma.PresensiGetPayload<{
   include: {
-    peserta: true;
+    peserta: {
+      select: {
+        id: true;
+        kode_unik: true;
+        nama: true;
+        nomor_telepon: true;
+        alamat: true;
+        tipe: true;
+      };
+    };
   };
 }>;
 
@@ -32,15 +41,49 @@ export async function createPresensi(data: CreatePresensiInput): Promise<Presens
 }
 
 /**
- * Get all presensi for an event
+ * Get presensi for an event
  */
-export async function getPresensiByEvent(eventId: string): Promise<PresensiWithPeserta[]> {
+export async function getPresensiByEvent(
+  eventId: string,
+  options: {
+    limit?: number;
+    page?: number;
+    pageSize?: number;
+    all?: boolean;
+    tipe?: TipePeserta;
+  } = {}
+): Promise<PresensiWithPeserta[]> {
+  const isAll = options.all === true;
+  const limit = isAll
+    ? undefined
+    : options.limit
+      ? Math.max(1, options.limit)
+      : undefined;
+  const page = !isAll && options.page ? Math.max(1, options.page) : 1;
+  const pageSize = !isAll && options.pageSize ? Math.max(1, options.pageSize) : undefined;
+  const tipe = options.tipe;
+  const skip = pageSize ? (page - 1) * pageSize : undefined;
+
   return prisma.presensi.findMany({
-    where: { event_id: eventId },
+    where: {
+      event_id: eventId,
+      ...(tipe && { peserta: { tipe } }),
+    },
     include: {
-      peserta: true,
+      peserta: {
+        select: {
+          id: true,
+          kode_unik: true,
+          nama: true,
+          nomor_telepon: true,
+          alamat: true,
+          tipe: true,
+        },
+      },
     },
     orderBy: { waktu_hadir: 'desc' },
+    ...(limit ? { take: limit } : {}),
+    ...(pageSize ? { take: pageSize, skip } : {}),
   });
 }
 
@@ -59,12 +102,13 @@ export async function getPresensiByPeserta(pesertaId: string): Promise<Presensi[
  */
 export async function getPresensiStats(eventId: string) {
   const totalPeserta = await prisma.peserta.count({
-    where: { event_id: eventId },
+    where: { event_id: eventId, tipe: TipePeserta.PESERTA },
   });
 
   const totalHadir = await prisma.peserta.count({
     where: {
       event_id: eventId,
+      tipe: TipePeserta.PESERTA,
       status_hadir: true,
     },
   });
@@ -86,10 +130,10 @@ export async function getPresensiStats(eventId: string) {
 export async function checkAttendance(pesertaId: string): Promise<boolean> {
   const peserta = await prisma.peserta.findUnique({
     where: { id: pesertaId },
-    select: { status_hadir: true },
+    select: { status_hadir: true, tipe: true },
   });
 
-  return peserta?.status_hadir || false;
+  return peserta?.tipe === TipePeserta.PESERTA ? (peserta.status_hadir || false) : false;
 }
 
 /**

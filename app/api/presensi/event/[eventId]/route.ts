@@ -6,6 +6,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
 import { errorResponse, successResponse } from '@/lib/utils';
+import { getPresensiByEvent, getPresensiStats } from '@/services/presensi.service';
 import { prisma } from '@/lib/prisma';
 
 interface RouteParams {
@@ -19,56 +20,49 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     await requireAuth();
 
     const { eventId } = await params;
+    const { searchParams } = new URL(request.url);
+    const tipe = 'PESERTA' as const;
+    const all = searchParams.get('all') === 'true';
+    const page = Number(searchParams.get('page') || '1');
+    const pageSize = Number(searchParams.get('pageSize') || '10');
+    const limitParam = searchParams.get('limit');
+    const limit = limitParam ? Number(limitParam) : undefined;
 
-    // Get all presensi for the event (PESERTA only, exclude JAMAAH)
-    const presensiList = await prisma.presensi.findMany({
-      where: { 
-        event_id: eventId,
-        peserta: {
-          tipe: 'PESERTA'
-        }
-      },
-      include: {
-        peserta: {
-          select: {
-            id: true,
-            kode_unik: true,
-            nama: true,
-            nomor_telepon: true,
-            alamat: true,
-          },
-        },
-      },
-      orderBy: { waktu_hadir: 'desc' },
-    });
-
-    // Get statistics (PESERTA only, exclude JAMAAH)
-    const totalPeserta = await prisma.peserta.count({
-      where: { 
-        event_id: eventId,
-        tipe: 'PESERTA'
-      },
-    });
-
-    const totalHadir = await prisma.peserta.count({
+    const totalPresensi = await prisma.presensi.count({
       where: {
         event_id: eventId,
-        tipe: 'PESERTA',
-        status_hadir: true,
+        peserta: {
+          tipe,
+        },
       },
     });
 
-    const stats = {
-      total_peserta: totalPeserta,
-      total_hadir: totalHadir,
-      total_belum_hadir: totalPeserta - totalHadir,
-      persentase_hadir: totalPeserta > 0 ? Math.round((totalHadir / totalPeserta) * 100) : 0,
-    };
+    const [presensiList, stats] = await Promise.all([
+      getPresensiByEvent(eventId, {
+        all,
+        limit: all ? undefined : (Number.isFinite(limit) && limit ? limit : undefined),
+        page: all ? undefined : page,
+        pageSize: all ? undefined : pageSize,
+        tipe,
+      }),
+      getPresensiStats(eventId),
+    ]);
+
+    const resolvedPageSize = all ? totalPresensi || 1 : (Number.isFinite(pageSize) && pageSize > 0 ? pageSize : 10);
+    const totalPages = all ? 1 : Math.max(1, Math.ceil(totalPresensi / resolvedPageSize));
 
     return NextResponse.json(
       successResponse({
         presensi: presensiList,
         stats,
+        total_presensi: totalPresensi,
+        pagination: {
+          page: all ? 1 : (Number.isFinite(page) && page > 0 ? page : 1),
+          pageSize: resolvedPageSize,
+          total: totalPresensi,
+          totalPages,
+          all,
+        },
       })
     );
   } catch (error) {
