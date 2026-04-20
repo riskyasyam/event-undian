@@ -31,6 +31,14 @@ export interface BulkCreatePesertaInput {
   tipe?: TipePeserta;
 }
 
+export interface GetPesertaByEventOptions {
+  tipe?: TipePeserta;
+  page?: number;
+  pageSize?: number;
+  search?: string;
+  filter?: 'all' | 'attended' | 'eligible';
+}
+
 /**
  * Get current max numeric suffix from kode_unik (MU-001 -> 1)
  */
@@ -141,16 +149,64 @@ export async function bulkCreatePeserta(data: BulkCreatePesertaInput): Promise<n
 }
 
 /**
- * Get all participants for an event
+ * Get participants for an event with pagination and optional filtering
  */
-export async function getPesertaByEvent(eventId: string, tipe?: TipePeserta): Promise<Peserta[]> {
-  return prisma.peserta.findMany({
-    where: { 
-      event_id: eventId,
-      ...(tipe && { tipe }),
-    },
-    orderBy: { created_at: 'desc' },
-  });
+export async function getPesertaByEvent(
+  eventId: string,
+  options: GetPesertaByEventOptions = {}
+): Promise<{ participants: Peserta[]; total: number; page: number; pageSize: number }> {
+  const {
+    tipe,
+    page = 1,
+    pageSize = 10,
+    search,
+    filter = 'all',
+  } = options;
+
+  const safePage = Math.max(1, page);
+  const safePageSize = Math.min(100, Math.max(1, pageSize));
+  const skip = (safePage - 1) * safePageSize;
+
+  const where: Prisma.PesertaWhereInput = {
+    event_id: eventId,
+    ...(tipe && { tipe }),
+  };
+
+  if (filter === 'attended') {
+    where.status_hadir = true;
+  }
+
+  if (filter === 'eligible') {
+    where.status_hadir = true;
+    where.sudah_menang = false;
+  }
+
+  const trimmedSearch = search?.trim();
+  if (trimmedSearch) {
+    where.OR = [
+      { nama: { contains: trimmedSearch, mode: 'insensitive' } },
+      { kode_unik: { contains: trimmedSearch, mode: 'insensitive' } },
+      { nomor_telepon: { contains: trimmedSearch } },
+      { alamat: { contains: trimmedSearch, mode: 'insensitive' } },
+    ];
+  }
+
+  const [participants, total] = await Promise.all([
+    prisma.peserta.findMany({
+      where,
+      orderBy: { created_at: 'desc' },
+      skip,
+      take: safePageSize,
+    }),
+    prisma.peserta.count({ where }),
+  ]);
+
+  return {
+    participants,
+    total,
+    page: safePage,
+    pageSize: safePageSize,
+  };
 }
 
 /**
@@ -256,43 +312,29 @@ export async function deletePeserta(id: string): Promise<Peserta> {
  * Get participant statistics for an event
  */
 export async function getPesertaStats(eventId: string, tipe?: TipePeserta) {
-  const total = await prisma.peserta.count({
-    where: { 
-      event_id: eventId,
-      ...(tipe && { tipe }),
-    },
-  });
+  const tipeFilter = tipe ? Prisma.sql`AND tipe = ${tipe}::"TipePeserta"` : Prisma.empty;
 
-  const attended = await prisma.peserta.count({
-    where: {
-      event_id: eventId,
-      status_hadir: true,
-      ...(tipe && { tipe }),
-    },
-  });
+  const result = await prisma.$queryRaw<Array<{
+    total: number;
+    attended: number;
+    winners: number;
+    eligible: number;
+  }>>(Prisma.sql`
+    SELECT
+      COUNT(*)::int AS total,
+      COUNT(*) FILTER (WHERE status_hadir = true)::int AS attended,
+      COUNT(*) FILTER (WHERE sudah_menang = true)::int AS winners,
+      COUNT(*) FILTER (WHERE status_hadir = true AND sudah_menang = false)::int AS eligible
+    FROM "peserta"
+    WHERE event_id = ${eventId}
+    ${tipeFilter}
+  `);
 
-  const winners = await prisma.peserta.count({
-    where: {
-      event_id: eventId,
-      sudah_menang: true,
-      ...(tipe && { tipe }),
-    },
-  });
-
-  const eligible = await prisma.peserta.count({
-    where: {
-      event_id: eventId,
-      status_hadir: true,
-      sudah_menang: false,
-      ...(tipe && { tipe }),
-    },
-  });
-
-  return {
-    total,
-    attended,
-    winners,
-    eligible,
+  return result[0] ?? {
+    total: 0,
+    attended: 0,
+    winners: 0,
+    eligible: 0,
   };
 }
 

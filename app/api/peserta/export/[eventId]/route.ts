@@ -45,6 +45,14 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       orderBy: { kode_unik: 'asc' },
     });
 
+    // Ensure natural numeric ordering for participant codes (e.g. MU-2 before MU-10)
+    participants.sort((a, b) =>
+      a.kode_unik.localeCompare(b.kode_unik, undefined, {
+        numeric: true,
+        sensitivity: 'base',
+      })
+    );
+
     if (participants.length === 0) {
       return NextResponse.json(
         errorResponse(`Tidak ada ${tipe === 'JAMAAH' ? 'jamaah' : 'peserta'} untuk di-export`),

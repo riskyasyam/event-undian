@@ -82,22 +82,40 @@ export async function getHadiahWithWinners(id: string) {
 export async function getHadiahWithWinnerCounts(eventId: string) {
   const prizes = await prisma.hadiah.findMany({
     where: { event_id: eventId },
-    include: {
-      _count: {
-        select: {
-          pemenang: true,
-        },
-      },
-    },
     orderBy: { urutan: 'asc' },
   });
 
-  return prizes.map((prize) => ({
-    ...prize,
-    winnersDrawn: prize._count.pemenang,
-    remainingSlots: prize.jumlah_pemenang - prize._count.pemenang,
-    isComplete: prize._count.pemenang >= prize.jumlah_pemenang,
-  }));
+  if (prizes.length === 0) {
+    return [];
+  }
+
+  const prizeIds = prizes.map((prize) => prize.id);
+  const winnerCounts = await prisma.pemenang.groupBy({
+    by: ['hadiah_id'],
+    where: {
+      hadiah_id: {
+        in: prizeIds,
+      },
+    },
+    _count: {
+      _all: true,
+    },
+  });
+
+  const winnerCountMap = new Map(
+    winnerCounts.map((item) => [item.hadiah_id, item._count._all])
+  );
+
+  return prizes.map((prize) => {
+    const winnersDrawn = winnerCountMap.get(prize.id) ?? 0;
+
+    return {
+      ...prize,
+      winnersDrawn,
+      remainingSlots: prize.jumlah_pemenang - winnersDrawn,
+      isComplete: winnersDrawn >= prize.jumlah_pemenang,
+    };
+  });
 }
 
 /**

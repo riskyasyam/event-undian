@@ -54,6 +54,8 @@ model Peserta {
   presensi      Presensi[]
   
   @@index([event_id])
+  @@index([event_id, tipe, created_at])
+  @@index([event_id, tipe, status_hadir, sudah_menang])
   @@index([kode_unik])
   @@index([token])
   @@index([status_hadir, sudah_menang])  // Composite index for lottery query
@@ -97,6 +99,7 @@ model Hadiah {
   pemenang         Pemenang[]
   
   @@index([event_id])
+  @@index([event_id, urutan])
   @@map("hadiah")
 }
 
@@ -113,6 +116,7 @@ model Pemenang {
   hadiah       Hadiah   @relation(fields: [hadiah_id], references: [id], onDelete: Cascade)
   
   @@index([hadiah_id])
+  @@index([hadiah_id, drawn_at])
   @@map("pemenang")
 }
 

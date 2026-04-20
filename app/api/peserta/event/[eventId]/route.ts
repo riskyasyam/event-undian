@@ -24,14 +24,33 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     const { eventId } = await params;
     const { searchParams } = new URL(request.url);
     const tipe = searchParams.get('tipe') as TipePeserta | null;
+    const page = Number(searchParams.get('page') || '1');
+    const pageSize = Number(searchParams.get('pageSize') || '10');
+    const search = searchParams.get('search') || undefined;
+    const filterParam = searchParams.get('filter');
+    const filter: 'all' | 'attended' | 'eligible' =
+      filterParam === 'attended' || filterParam === 'eligible' ? filterParam : 'all';
     
-    const participants = await getPesertaByEvent(eventId, tipe || undefined);
+    const pesertaResult = await getPesertaByEvent(eventId, {
+      tipe: tipe || undefined,
+      page,
+      pageSize,
+      search,
+      filter,
+    });
     const stats = await getPesertaStats(eventId, tipe || undefined);
+    const totalPages = Math.max(1, Math.ceil(pesertaResult.total / pesertaResult.pageSize));
 
     return NextResponse.json(
       successResponse({
-        participants,
+        participants: pesertaResult.participants,
         stats,
+        pagination: {
+          total: pesertaResult.total,
+          page: pesertaResult.page,
+          pageSize: pesertaResult.pageSize,
+          totalPages,
+        },
       })
     );
   } catch (error) {
