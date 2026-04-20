@@ -104,24 +104,11 @@ export default function BlastWAPage() {
     try {
       setLoading(true);
 
-      // Count by status
-      const response = await fetch(`/api/peserta/event/${selectedEvent.id}`);
+      const response = await fetch(`/api/blast-wa?event_id=${selectedEvent.id}`);
       const data = await response.json();
 
       if (data.success) {
-        // Calculate stats from participants - only for PESERTA (milad participants), not JAMAAH
-        const participants = data.data.participants;
-        const pesertaMilad = participants.filter((p: any) => p.tipe === 'PESERTA');
-        
-        const statsCounted: BlastStats = {
-          total_sent: pesertaMilad.filter((p: any) => p.wa_status === 'SENT').length,
-          total_failed: pesertaMilad.filter((p: any) => p.wa_status === 'FAILED').length,
-          total_pending: pesertaMilad.filter((p: any) => 
-            !p.wa_status || p.wa_status === 'PENDING' || p.wa_status === 'PROCESSING'
-          ).length,
-        };
-
-        setStats(statsCounted);
+        setStats(data.data.stats);
       }
     } catch (error) {
       console.error('Failed to fetch stats:', error);

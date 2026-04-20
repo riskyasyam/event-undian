@@ -27,6 +27,51 @@ type BlastDetailLog = {
   processed_at: string;
 };
 
+export async function GET(request: NextRequest) {
+  try {
+    await requireAuth();
+
+    const { searchParams } = new URL(request.url);
+    const event_id = searchParams.get('event_id');
+
+    if (!event_id) {
+      return NextResponse.json(errorResponse('event_id is required'), { status: 400 });
+    }
+
+    const result = await prisma.$queryRaw<Array<{
+      total_sent: number;
+      total_failed: number;
+      total_pending: number;
+    }>>`
+      SELECT
+        COUNT(*) FILTER (WHERE wa_status = 'SENT')::int AS total_sent,
+        COUNT(*) FILTER (WHERE wa_status = 'FAILED')::int AS total_failed,
+        COUNT(*) FILTER (WHERE wa_status IS NULL OR wa_status IN ('PENDING', 'PROCESSING'))::int AS total_pending
+      FROM "peserta"
+      WHERE event_id = ${event_id}
+        AND tipe = 'PESERTA'::"TipePeserta"
+    `;
+
+    const stats = result[0] || {
+      total_sent: 0,
+      total_failed: 0,
+      total_pending: 0,
+    };
+
+    return NextResponse.json(successResponse({ stats }));
+  } catch (error) {
+    if (error instanceof Error && error.message === 'Unauthorized') {
+      return NextResponse.json(errorResponse('Unauthorized'), { status: 401 });
+    }
+
+    console.error('Get WhatsApp blast stats error:', error);
+    return NextResponse.json(
+      errorResponse('Failed to fetch WhatsApp blast stats', error),
+      { status: 500 }
+    );
+  }
+}
+
 export async function POST(request: NextRequest) {
   try {
     await requireAuth();
