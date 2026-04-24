@@ -931,9 +931,9 @@ export default function UndiPage() {
                       </span>
                     </div>
 
-                    <div className="flex gap-4 overflow-x-auto pb-2 snap-x snap-mandatory">
+                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
                       {orderPrizes.map((prize) => (
-                        <div key={prize.id} className="bg-[#1a1a1a] rounded-lg shadow-lg overflow-hidden border border-yellow-500/20 shrink-0 w-70 sm:w-80 snap-start">
+                        <div key={prize.id} className="bg-[#1a1a1a] rounded-lg shadow-lg overflow-hidden border border-yellow-500/20">
                     {/* Prize Image */}
                     {prize.gambar_url && (
                       <div className="relative h-48 w-full overflow-hidden bg-[#0a0a0a]">
