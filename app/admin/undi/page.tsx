@@ -35,6 +35,7 @@ interface Participant {
   nama: string;
   email?: string;
   nomor_telepon?: string;
+  alamat?: string;
 }
 
 interface Winner {
@@ -316,6 +317,7 @@ export default function UndiPage() {
         nama: w.nama,
         email: w.email,
         nomor_telepon: w.nomor_telepon,
+        alamat: w.alamat,
       },
       hadiah: {
         nama_hadiah: selectedPrizeForDraw?.nama_hadiah || '',
@@ -735,6 +737,9 @@ export default function UndiPage() {
                               </div>
                               <div className="text-lg font-medium text-yellow-300 mb-2">
                                 {lastWinner.nomor_telepon || '-'}
+                              </div>
+                              <div className="text-base text-gray-200 mb-2 px-4 wrap-break-word">
+                                {lastWinner.alamat || '-'}
                               </div>
                               <div className="text-xl text-gray-300 mt-4 mb-6">
                                 Menjadi pemenang {selectedPrizeForDraw?.nama_hadiah}!
