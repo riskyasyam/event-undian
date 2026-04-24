@@ -5,7 +5,7 @@
  */
 
 import { usePathname } from 'next/navigation';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Sidebar from '@/components/Sidebar';
 
 export default function AdminLayout({
@@ -15,6 +15,12 @@ export default function AdminLayout({
 }) {
   const pathname = usePathname();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [desktopSidebarHidden, setDesktopSidebarHidden] = useState(false);
+
+  useEffect(() => {
+    // Fokuskan area undian agar layar terasa full-width saat drawing.
+    setDesktopSidebarHidden(pathname.startsWith('/admin/undi'));
+  }, [pathname]);
 
   // Don't show layout on login page
   if (pathname === '/admin/login') {
@@ -24,10 +30,18 @@ export default function AdminLayout({
   return (
     <div className="min-h-screen bg-black">
       {/* Sidebar */}
-      <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+      <Sidebar
+        isOpen={sidebarOpen}
+        desktopHidden={desktopSidebarHidden}
+        onClose={() => setSidebarOpen(false)}
+      />
 
       {/* Main Content Area */}
-      <div className="lg:pl-56">
+      <div
+        className={`transition-[padding] duration-300 ${
+          desktopSidebarHidden ? 'lg:pl-0' : 'lg:pl-56'
+        }`}
+      >
         {/* Top Header with Hamburger for Mobile */}
         <header className="sticky top-0 z-30 bg-black border-b border-yellow-500/20 shadow-lg">
           <div className="px-4 h-14 flex items-center justify-between">
@@ -39,6 +53,24 @@ export default function AdminLayout({
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
               </svg>
+            </button>
+
+            {/* Desktop Sidebar Toggle */}
+            <button
+              onClick={() => setDesktopSidebarHidden((prev) => !prev)}
+              className="hidden lg:inline-flex p-2 rounded-lg text-yellow-500 hover:bg-yellow-500/10"
+              title={desktopSidebarHidden ? 'Tampilkan sidebar' : 'Sembunyikan sidebar'}
+              aria-label={desktopSidebarHidden ? 'Tampilkan sidebar' : 'Sembunyikan sidebar'}
+            >
+              {desktopSidebarHidden ? (
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+              ) : (
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                </svg>
+              )}
             </button>
 
             {/* Page Title */}

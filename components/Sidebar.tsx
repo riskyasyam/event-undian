@@ -11,10 +11,11 @@ import Image from 'next/image';
 
 interface SidebarProps {
   isOpen: boolean;
+  desktopHidden: boolean;
   onClose: () => void;
 }
 
-export default function Sidebar({ isOpen, onClose }: SidebarProps) {
+export default function Sidebar({ isOpen, desktopHidden, onClose }: SidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
   const [loggingOut, setLoggingOut] = useState(false);
@@ -81,8 +82,10 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
 
       {/* Sidebar */}
       <aside
-        className={`fixed top-0 left-0 z-50 h-screen w-56 bg-black border-r border-yellow-500/20 shadow-xl transform transition-transform duration-300 ease-in-out lg:translate-x-0 ${
+        className={`fixed top-0 left-0 z-50 h-screen w-56 bg-black border-r border-yellow-500/20 shadow-xl transform transition-transform duration-300 ease-in-out ${
           isOpen ? 'translate-x-0' : '-translate-x-full'
+        } ${
+          desktopHidden ? 'lg:-translate-x-full' : 'lg:translate-x-0'
         }`}
       >
         <div className="flex flex-col h-full">

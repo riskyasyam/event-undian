@@ -84,6 +84,7 @@ export default function UndiPage() {
   const [resettingLottery, setResettingLottery] = useState(false);
   const [resettingPrizeId, setResettingPrizeId] = useState<string | null>(null);
   const [openingPrizeId, setOpeningPrizeId] = useState<string | null>(null);
+  const [expandedPrizeOrder, setExpandedPrizeOrder] = useState<number | null>(null);
   const liveWinnersScrollRef = useRef<HTMLDivElement | null>(null);
   const finalWinnersScrollRef = useRef<HTMLDivElement | null>(null);
 
@@ -100,6 +101,21 @@ export default function UndiPage() {
 
     return [...grouped.entries()].sort((a, b) => a[0] - b[0]);
   }, [prizes]);
+
+  useEffect(() => {
+    if (groupedPrizes.length === 0) {
+      setExpandedPrizeOrder(null);
+      return;
+    }
+
+    setExpandedPrizeOrder((current) => {
+      if (current !== null && groupedPrizes.some(([order]) => order === current)) {
+        return current;
+      }
+
+      return groupedPrizes[0][0];
+    });
+  }, [groupedPrizes]);
 
   useEffect(() => {
     fetchMainEvent();
@@ -641,7 +657,8 @@ export default function UndiPage() {
           {/* Slot Machine Modal */}
           {showSlot && selectedPrizeForDraw && (
             <div className="fixed inset-0 bg-black/95 backdrop-blur-sm flex items-center justify-center z-50 p-4 overflow-y-auto">
-              <div className="max-w-2xl w-full bg-[#1a1a1a] rounded-2xl shadow-2xl border border-yellow-500/20 p-6 my-8 max-h-[90vh] overflow-y-auto">
+              <div className="w-full h-full bg-[#1a1a1a] rounded-xl md:rounded-2xl shadow-2xl border border-yellow-500/20 p-4 md:p-6 overflow-y-auto">
+                <div className="max-w-6xl mx-auto">
                 {/* Prize Info */}
                 <div className="text-center mb-6">
                   {selectedPrizeForDraw.gambar_url && (
@@ -649,7 +666,7 @@ export default function UndiPage() {
                       src={selectedPrizeForDraw.gambar_url} 
                       alt={selectedPrizeForDraw.nama_hadiah}
                         loading="lazy"
-                      className="w-24 h-24 object-cover rounded-lg mx-auto mb-3 border-2 border-yellow-500"
+                      className="w-32 h-32 md:w-36 md:h-36 object-cover rounded-lg mx-auto mb-3 border-2 border-yellow-500"
                     />
                   )}
                   <h2 className="text-2xl font-bold text-yellow-500 mb-2">
@@ -731,14 +748,14 @@ export default function UndiPage() {
                               {/* Daftar semua pemenang */}
                               <div
                                 ref={finalWinnersScrollRef}
-                                className="bg-black/30 rounded-lg p-4 mb-6 text-left max-h-56 overflow-y-auto"
+                                className="bg-black/30 rounded-lg p-4 mb-6 text-left"
                               >
-                                <div className="text-sm font-semibold text-yellow-500 mb-3 text-center">Daftar Pemenang</div>
-                                <div className="space-y-2">
+                                <div className="text-base md:text-lg font-semibold text-yellow-500 mb-3 text-center">Daftar Pemenang</div>
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-2">
                                   {batchWinners.map((winner, idx) => (
-                                    <div key={`${winner.id}-${idx}`} className="text-sm">
-                                      <div className="font-medium text-white">{idx + 1}. {winner.nama}</div>
-                                      <div className="text-xs text-yellow-300">{winner.nomor_telepon || '-'}</div>
+                                    <div key={`${winner.id}-${idx}`} className="text-sm md:text-base">
+                                      <div className="font-semibold text-white text-base md:text-lg leading-snug">{idx + 1}. {winner.nama}</div>
+                                      <div className="text-xs md:text-sm text-yellow-300 mt-0.5">{winner.nomor_telepon || '-'}</div>
                                     </div>
                                   ))}
                                 </div>
@@ -785,22 +802,22 @@ export default function UndiPage() {
 
                             <div className="bg-black/20 border border-yellow-500/20 rounded-xl p-4 h-full">
                               <div className="flex items-center justify-between mb-3">
-                                <h4 className="text-sm font-semibold text-yellow-500">Pemenang Terkumpul</h4>
-                                <span className="text-xs text-gray-400">{batchWinners.length} orang</span>
+                                <h4 className="text-base md:text-lg font-semibold text-yellow-500">Pemenang Terkumpul</h4>
+                                <span className="text-xs md:text-sm text-gray-400">{batchWinners.length} orang</span>
                               </div>
                               <div
                                 ref={liveWinnersScrollRef}
                                 className="max-h-90 overflow-y-auto space-y-2 pr-1"
                               >
                                 {batchWinners.length === 0 ? (
-                                  <div className="rounded-lg border border-yellow-500/10 bg-black/30 px-3 py-5 text-sm text-center text-gray-400">
+                                  <div className="rounded-lg border border-yellow-500/10 bg-black/30 px-3 py-5 text-base text-center text-gray-400">
                                     Menunggu pemenang pertama...
                                   </div>
                                 ) : (
                                   batchWinners.map((winner, idx) => (
-                                    <div key={`${winner.id}-${idx}`} className="rounded-lg border border-yellow-500/10 bg-black/30 px-3 py-2 text-sm">
-                                      <div className="font-semibold text-white">{idx + 1}. {winner.nama}</div>
-                                      <div className="text-yellow-300 text-xs mt-0.5">{winner.nomor_telepon || '-'}</div>
+                                    <div key={`${winner.id}-${idx}`} className="rounded-lg border border-yellow-500/10 bg-black/30 px-3 py-3 text-sm md:text-base">
+                                      <div className="font-semibold text-white text-base md:text-lg leading-snug">{idx + 1}. {winner.nama}</div>
+                                      <div className="text-yellow-300 text-xs md:text-sm mt-0.5">{winner.nomor_telepon || '-'}</div>
                                     </div>
                                   ))
                                 )}
@@ -888,6 +905,7 @@ export default function UndiPage() {
                   </>
                 )}
               </div>
+              </div>
             </div>
           )}
 
@@ -921,108 +939,132 @@ export default function UndiPage() {
               </div>
               <div className="space-y-6">
                 {groupedPrizes.map(([displayOrder, orderPrizes]) => (
-                  <div key={`undian-${displayOrder}`} className="space-y-3">
-                    <div className="flex items-center gap-2">
-                      <span className="px-3 py-1 bg-yellow-500/10 text-yellow-500 text-xs font-semibold rounded-full border border-yellow-500/20">
-                        Undian #{displayOrder}
-                      </span>
-                      <span className="text-xs text-gray-400">
-                        {orderPrizes.length} hadiah
-                      </span>
-                    </div>
+                  <div key={`undian-${displayOrder}`} className="rounded-2xl border border-yellow-500/20 bg-[#111111] overflow-hidden shadow-lg shadow-black/30">
+                    <button
+                      type="button"
+                      onClick={() => setExpandedPrizeOrder((current) => (current === displayOrder ? null : displayOrder))}
+                      className="w-full flex items-center justify-between gap-3 px-4 md:px-5 py-4 text-left hover:bg-yellow-500/5 transition"
+                      aria-expanded={expandedPrizeOrder === displayOrder}
+                    >
+                      <div className="flex items-center gap-3">
+                        <span className="px-3 py-1 bg-yellow-500/10 text-yellow-500 text-xs font-semibold rounded-full border border-yellow-500/20">
+                          Undian #{displayOrder}
+                        </span>
+                        <span className="text-xs md:text-sm text-gray-400">
+                          {orderPrizes.length} hadiah
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-3 text-gray-400">
+                        <span className="text-xs md:text-sm">
+                          {expandedPrizeOrder === displayOrder ? 'Sembunyikan' : 'Lihat hadiah'}
+                        </span>
+                        <svg
+                          className={`w-5 h-5 transition-transform ${expandedPrizeOrder === displayOrder ? 'rotate-180' : ''}`}
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                        </svg>
+                      </div>
+                    </button>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                      {orderPrizes.map((prize) => (
-                        <div key={prize.id} className="bg-[#1a1a1a] rounded-lg shadow-lg overflow-hidden border border-yellow-500/20">
-                    {/* Prize Image */}
-                    {prize.gambar_url && (
-                      <div className="relative h-48 w-full overflow-hidden bg-[#0a0a0a]">
-                        <img 
-                          src={prize.gambar_url} 
-                          alt={prize.nama_hadiah}
-                          loading="lazy"
-                          className="w-full h-full object-cover"
-                        />
-                        <div className="absolute inset-0 bg-linear-to-t from-[#1a1a1a] via-transparent to-transparent"></div>
+                    {expandedPrizeOrder === displayOrder && (
+                      <div className="border-t border-yellow-500/10 p-4 md:p-5">
+                        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                          {orderPrizes.map((prize) => (
+                            <div key={prize.id} className="bg-[#1a1a1a] rounded-lg shadow-lg overflow-hidden border border-yellow-500/20">
+                              {/* Prize Image */}
+                              {prize.gambar_url && (
+                                <div className="relative h-56 md:h-60 w-full overflow-hidden bg-[#0a0a0a]">
+                                  <img 
+                                    src={prize.gambar_url} 
+                                    alt={prize.nama_hadiah}
+                                    loading="lazy"
+                                    className="w-full h-full object-cover"
+                                  />
+                                  <div className="absolute inset-0 bg-linear-to-t from-[#1a1a1a] via-transparent to-transparent"></div>
+                                </div>
+                              )}
+                              
+                              <div className="p-5">
+                                <div className="flex justify-between items-start mb-4">
+                                  <div className="flex gap-2">
+                                    <span className="px-3 py-1 bg-yellow-500/10 text-yellow-500 text-xs font-medium rounded-full border border-yellow-500/20">
+                                      Hadiah #{prize.urutan}
+                                    </span>
+                                    <span className={`px-3 py-1 text-xs font-medium rounded-full border ${
+                                      prize.tipe_peserta === 'JAMAAH' 
+                                        ? 'bg-purple-500/10 text-purple-500 border-purple-500/20' 
+                                        : 'bg-blue-500/10 text-blue-500 border-blue-500/20'
+                                    }`}>
+                                      {prize.tipe_peserta === 'JAMAAH' ? 'Jamaah' : 'Peserta'}
+                                    </span>
+                                  </div>
+                                  {prize.isComplete ? (
+                                    <span className="px-3 py-1 bg-green-500/10 text-green-500 text-xs font-medium rounded-full border border-green-500/20">
+                                      Selesai ✓
+                                    </span>
+                                  ) : (
+                                    <span className="px-3 py-1 bg-amber-500/10 text-amber-500 text-xs font-medium rounded-full border border-amber-500/20">
+                                      {prize.remainingSlots} tersisa
+                                    </span>
+                                  )}
+                                </div>
+
+                                <h3 className="text-lg font-bold text-yellow-500 mb-2">{prize.nama_hadiah}</h3>
+                                {prize.deskripsi && (
+                                  <p className="text-sm text-gray-400 mb-4 line-clamp-2">{prize.deskripsi}</p>
+                                )}
+
+                                <div className="mb-4">
+                                  <div className="flex justify-between text-sm mb-2">
+                                    <span className="text-gray-400">Pemenang Terundi</span>
+                                    <span className="font-bold text-yellow-500">
+                                      {prize.winnersDrawn} / {prize.jumlah_pemenang}
+                                    </span>
+                                  </div>
+                                  <div className="w-full bg-yellow-500/10 rounded-full h-2.5">
+                                    <div
+                                      className="bg-linear-to-r from-yellow-500 to-yellow-600 h-2.5 rounded-full transition-all shadow-sm shadow-yellow-500/50"
+                                      style={{
+                                        width: `${(prize.winnersDrawn / prize.jumlah_pemenang) * 100}%`,
+                                      }}
+                                    />
+                                  </div>
+                                </div>
+
+                                {prize.isComplete ? (
+                                  <div className="grid grid-cols-2 gap-2">
+                                    <button
+                                      disabled
+                                      className="w-full px-4 py-2.5 bg-gray-700 text-gray-300 text-sm font-semibold rounded-lg cursor-not-allowed"
+                                    >
+                                      Semua Pemenang Terundi
+                                    </button>
+                                    <button
+                                      onClick={() => handleResetPrizeLottery(prize)}
+                                      disabled={drawing || resettingPrizeId === prize.id}
+                                      className="w-full px-4 py-2.5 border border-red-500/40 bg-red-500/20 hover:bg-red-500/30 text-red-300 text-sm font-semibold rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed"
+                                    >
+                                      {resettingPrizeId === prize.id ? 'Mereset...' : 'Reset'}
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <button
+                                    onClick={() => handleOpenSlot(prize)}
+                                    disabled={drawing || openingPrizeId === prize.id}
+                                    className="w-full px-4 py-2.5 bg-yellow-500 hover:bg-yellow-600 text-black text-sm font-semibold rounded-lg transition disabled:bg-gray-700 disabled:text-gray-500 disabled:cursor-not-allowed shadow-lg shadow-yellow-500/50 disabled:shadow-none"
+                                  >
+                                    {openingPrizeId === prize.id ? 'Membuka Undian...' : 'Undi Pemenang'}
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
                       </div>
                     )}
-                    
-                    <div className="p-5">
-                      <div className="flex justify-between items-start mb-4">
-                        <div className="flex gap-2">
-                          <span className="px-3 py-1 bg-yellow-500/10 text-yellow-500 text-xs font-medium rounded-full border border-yellow-500/20">
-                            Hadiah #{prize.urutan}
-                          </span>
-                          <span className={`px-3 py-1 text-xs font-medium rounded-full border ${
-                            prize.tipe_peserta === 'JAMAAH' 
-                              ? 'bg-purple-500/10 text-purple-500 border-purple-500/20' 
-                              : 'bg-blue-500/10 text-blue-500 border-blue-500/20'
-                          }`}>
-                            {prize.tipe_peserta === 'JAMAAH' ? 'Jamaah' : 'Peserta'}
-                          </span>
-                        </div>
-                        {prize.isComplete ? (
-                          <span className="px-3 py-1 bg-green-500/10 text-green-500 text-xs font-medium rounded-full border border-green-500/20">
-                            Selesai ✓
-                          </span>
-                        ) : (
-                          <span className="px-3 py-1 bg-amber-500/10 text-amber-500 text-xs font-medium rounded-full border border-amber-500/20">
-                            {prize.remainingSlots} tersisa
-                          </span>
-                        )}
-                      </div>
-
-                      <h3 className="text-lg font-bold text-yellow-500 mb-2">{prize.nama_hadiah}</h3>
-                      {prize.deskripsi && (
-                        <p className="text-sm text-gray-400 mb-4 line-clamp-2">{prize.deskripsi}</p>
-                      )}
-
-                      <div className="mb-4">
-                        <div className="flex justify-between text-sm mb-2">
-                          <span className="text-gray-400">Pemenang Terundi</span>
-                          <span className="font-bold text-yellow-500">
-                            {prize.winnersDrawn} / {prize.jumlah_pemenang}
-                          </span>
-                        </div>
-                        <div className="w-full bg-yellow-500/10 rounded-full h-2.5">
-                          <div
-                            className="bg-linear-to-r from-yellow-500 to-yellow-600 h-2.5 rounded-full transition-all shadow-sm shadow-yellow-500/50"
-                            style={{
-                              width: `${(prize.winnersDrawn / prize.jumlah_pemenang) * 100}%`,
-                            }}
-                          />
-                        </div>
-                      </div>
-
-                          {prize.isComplete ? (
-                            <div className="grid grid-cols-2 gap-2">
-                              <button
-                                disabled
-                                className="w-full px-4 py-2.5 bg-gray-700 text-gray-300 text-sm font-semibold rounded-lg cursor-not-allowed"
-                              >
-                                Semua Pemenang Terundi
-                              </button>
-                              <button
-                                onClick={() => handleResetPrizeLottery(prize)}
-                                disabled={drawing || resettingPrizeId === prize.id}
-                                className="w-full px-4 py-2.5 border border-red-500/40 bg-red-500/20 hover:bg-red-500/30 text-red-300 text-sm font-semibold rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed"
-                              >
-                                {resettingPrizeId === prize.id ? 'Mereset...' : 'Reset'}
-                              </button>
-                            </div>
-                          ) : (
-                            <button
-                              onClick={() => handleOpenSlot(prize)}
-                              disabled={drawing || openingPrizeId === prize.id}
-                              className="w-full px-4 py-2.5 bg-yellow-500 hover:bg-yellow-600 text-black text-sm font-semibold rounded-lg transition disabled:bg-gray-700 disabled:text-gray-500 disabled:cursor-not-allowed shadow-lg shadow-yellow-500/50 disabled:shadow-none"
-                            >
-                              {openingPrizeId === prize.id ? 'Membuka Undian...' : 'Undi Pemenang'}
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                      ))}
-                    </div>
                   </div>
                 ))}
               </div>
