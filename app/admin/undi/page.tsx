@@ -5,7 +5,7 @@
  * /admin/undi
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import SlotUndian from '@/components/SlotUndian';
 import * as XLSX from 'xlsx';
 
@@ -86,6 +86,20 @@ export default function UndiPage() {
   const [openingPrizeId, setOpeningPrizeId] = useState<string | null>(null);
   const liveWinnersScrollRef = useRef<HTMLDivElement | null>(null);
   const finalWinnersScrollRef = useRef<HTMLDivElement | null>(null);
+
+  const groupedPrizes = useMemo(() => {
+    const grouped = new Map<number, Hadiah[]>();
+
+    for (const prize of prizes) {
+      const key = Number(prize.urutan) || 0;
+      if (!grouped.has(key)) {
+        grouped.set(key, []);
+      }
+      grouped.get(key)!.push(prize);
+    }
+
+    return [...grouped.entries()].sort((a, b) => a[0] - b[0]);
+  }, [prizes]);
 
   useEffect(() => {
     fetchMainEvent();
@@ -905,9 +919,21 @@ export default function UndiPage() {
                   {resettingLottery ? 'Mereset...' : 'Reset Undian'}
                 </button>
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {prizes.map((prize) => (
-                  <div key={prize.id} className="bg-[#1a1a1a] rounded-lg shadow-lg overflow-hidden border border-yellow-500/20">
+              <div className="space-y-6">
+                {groupedPrizes.map(([displayOrder, orderPrizes]) => (
+                  <div key={`undian-${displayOrder}`} className="space-y-3">
+                    <div className="flex items-center gap-2">
+                      <span className="px-3 py-1 bg-yellow-500/10 text-yellow-500 text-xs font-semibold rounded-full border border-yellow-500/20">
+                        Undian #{displayOrder}
+                      </span>
+                      <span className="text-xs text-gray-400">
+                        {orderPrizes.length} hadiah
+                      </span>
+                    </div>
+
+                    <div className="flex gap-4 overflow-x-auto pb-2 snap-x snap-mandatory">
+                      {orderPrizes.map((prize) => (
+                        <div key={prize.id} className="bg-[#1a1a1a] rounded-lg shadow-lg overflow-hidden border border-yellow-500/20 shrink-0 w-70 sm:w-80 snap-start">
                     {/* Prize Image */}
                     {prize.gambar_url && (
                       <div className="relative h-48 w-full overflow-hidden bg-[#0a0a0a]">
@@ -968,31 +994,34 @@ export default function UndiPage() {
                         </div>
                       </div>
 
-                      {prize.isComplete ? (
-                        <div className="grid grid-cols-2 gap-2">
-                          <button
-                            disabled
-                            className="w-full px-4 py-2.5 bg-gray-700 text-gray-300 text-sm font-semibold rounded-lg cursor-not-allowed"
-                          >
-                            Semua Pemenang Terundi
-                          </button>
-                          <button
-                            onClick={() => handleResetPrizeLottery(prize)}
-                            disabled={drawing || resettingPrizeId === prize.id}
-                            className="w-full px-4 py-2.5 border border-red-500/40 bg-red-500/20 hover:bg-red-500/30 text-red-300 text-sm font-semibold rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed"
-                          >
-                            {resettingPrizeId === prize.id ? 'Mereset...' : 'Reset'}
-                          </button>
+                          {prize.isComplete ? (
+                            <div className="grid grid-cols-2 gap-2">
+                              <button
+                                disabled
+                                className="w-full px-4 py-2.5 bg-gray-700 text-gray-300 text-sm font-semibold rounded-lg cursor-not-allowed"
+                              >
+                                Semua Pemenang Terundi
+                              </button>
+                              <button
+                                onClick={() => handleResetPrizeLottery(prize)}
+                                disabled={drawing || resettingPrizeId === prize.id}
+                                className="w-full px-4 py-2.5 border border-red-500/40 bg-red-500/20 hover:bg-red-500/30 text-red-300 text-sm font-semibold rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed"
+                              >
+                                {resettingPrizeId === prize.id ? 'Mereset...' : 'Reset'}
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              onClick={() => handleOpenSlot(prize)}
+                              disabled={drawing || openingPrizeId === prize.id}
+                              className="w-full px-4 py-2.5 bg-yellow-500 hover:bg-yellow-600 text-black text-sm font-semibold rounded-lg transition disabled:bg-gray-700 disabled:text-gray-500 disabled:cursor-not-allowed shadow-lg shadow-yellow-500/50 disabled:shadow-none"
+                            >
+                              {openingPrizeId === prize.id ? 'Membuka Undian...' : 'Undi Pemenang'}
+                            </button>
+                          )}
                         </div>
-                      ) : (
-                        <button
-                          onClick={() => handleOpenSlot(prize)}
-                          disabled={drawing || openingPrizeId === prize.id}
-                          className="w-full px-4 py-2.5 bg-yellow-500 hover:bg-yellow-600 text-black text-sm font-semibold rounded-lg transition disabled:bg-gray-700 disabled:text-gray-500 disabled:cursor-not-allowed shadow-lg shadow-yellow-500/50 disabled:shadow-none"
-                        >
-                          {openingPrizeId === prize.id ? 'Membuka Undian...' : 'Undi Pemenang'}
-                        </button>
-                      )}
+                      </div>
+                      ))}
                     </div>
                   </div>
                 ))}
