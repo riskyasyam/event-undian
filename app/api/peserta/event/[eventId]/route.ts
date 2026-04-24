@@ -6,7 +6,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
-import { getPesertaByEvent, getPesertaStats } from '@/services/peserta.service';
+import { deleteAllPesertaByEvent, getPesertaByEvent, getPesertaStats } from '@/services/peserta.service';
 import { errorResponse, successResponse } from '@/lib/utils';
 import { TipePeserta } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
@@ -112,6 +112,40 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     console.error('Reset failed messages error:', error);
     return NextResponse.json(
       errorResponse('Failed to reset messages', error),
+      { status: 500 }
+    );
+  }
+}
+
+export async function DELETE(request: NextRequest, { params }: RouteParams) {
+  try {
+    await requireAuth();
+
+    const { eventId } = await params;
+    const { searchParams } = new URL(request.url);
+    const tipe = searchParams.get('tipe') as TipePeserta | null;
+
+    const deletedCount = await deleteAllPesertaByEvent(eventId, tipe || undefined);
+
+    return NextResponse.json(
+      successResponse(
+        {
+          deleted: deletedCount,
+        },
+        `${deletedCount} data ${tipe === 'JAMAAH' ? 'jamaah' : 'peserta'} berhasil dihapus`
+      )
+    );
+  } catch (error) {
+    if (error instanceof Error && error.message === 'Unauthorized') {
+      return NextResponse.json(
+        errorResponse('Unauthorized'),
+        { status: 401 }
+      );
+    }
+
+    console.error('Delete participants by event error:', error);
+    return NextResponse.json(
+      errorResponse('Failed to delete participants', error),
       { status: 500 }
     );
   }

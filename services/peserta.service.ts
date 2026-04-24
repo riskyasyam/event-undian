@@ -341,9 +341,12 @@ export async function getPesertaStats(eventId: string, tipe?: TipePeserta) {
 /**
  * Delete all participants for an event
  */
-export async function deleteAllPesertaByEvent(eventId: string): Promise<number> {
+export async function deleteAllPesertaByEvent(eventId: string, tipe?: TipePeserta): Promise<number> {
   const result = await prisma.peserta.deleteMany({
-    where: { event_id: eventId },
+    where: {
+      event_id: eventId,
+      ...(tipe && { tipe }),
+    },
   });
 
   return result.count;

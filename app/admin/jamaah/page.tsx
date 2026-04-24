@@ -30,24 +30,43 @@ interface Stats {
 }
 
 export default function JamaahPage() {
+  const ITEMS_PER_PAGE = 10;
+  const DELETE_ALL_JAMAAH_PIN = '484210';
   const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
   const [participants, setParticipants] = useState<Jamaah[]>([]);
+  const [totalParticipants, setTotalParticipants] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
   const [stats, setStats] = useState<Stats | null>(null);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
+  const [deletingAll, setDeletingAll] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
   const [filter, setFilter] = useState<'all' | 'attended' | 'eligible'>('all');
+  const [currentPage, setCurrentPage] = useState(1);
 
   useEffect(() => {
     fetchMainEvent();
   }, []);
 
   useEffect(() => {
+    const timeout = setTimeout(() => {
+      setDebouncedSearchTerm(searchTerm);
+    }, 350);
+
+    return () => clearTimeout(timeout);
+  }, [searchTerm]);
+
+  useEffect(() => {
     if (selectedEvent) {
       fetchParticipants();
     }
-  }, [selectedEvent]);
+  }, [selectedEvent, currentPage, debouncedSearchTerm, filter]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, filter, selectedEvent?.id]);
 
   const fetchMainEvent = async () => {
     try {
@@ -67,12 +86,25 @@ export default function JamaahPage() {
     if (!selectedEvent) return;
 
     try {
-      const response = await fetch(`/api/peserta/event/${selectedEvent.id}?tipe=JAMAAH`);
+      const params = new URLSearchParams({
+        tipe: 'JAMAAH',
+        page: String(currentPage),
+        pageSize: String(ITEMS_PER_PAGE),
+        filter,
+      });
+
+      if (debouncedSearchTerm.trim()) {
+        params.set('search', debouncedSearchTerm.trim());
+      }
+
+      const response = await fetch(`/api/peserta/event/${selectedEvent.id}?${params.toString()}`);
       const data = await response.json();
 
       if (data.success) {
         setParticipants(data.data.participants);
         setStats(data.data.stats);
+        setTotalParticipants(data.data.pagination?.total ?? 0);
+        setTotalPages(data.data.pagination?.totalPages ?? 1);
       }
     } catch (error) {
       console.error('Failed to fetch participants:', error);
@@ -153,18 +185,69 @@ export default function JamaahPage() {
     }
   };
 
-  const filteredParticipants = participants
-    .filter(p => {
-      if (filter === 'attended') return p.status_hadir;
-      if (filter === 'eligible') return p.status_hadir && !p.sudah_menang;
-      return true;
-    })
-    .filter(p => 
-      p.nama.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      p.kode_unik.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      p.nomor_telepon?.includes(searchTerm) ||
-      p.alamat?.toLowerCase().includes(searchTerm.toLowerCase())
+  const handleDeleteAllJamaah = async () => {
+    if (!selectedEvent) return;
+
+    const enteredPin = window.prompt('Masukkan PIN untuk hapus seluruh data jamaah sementara:');
+
+    if (enteredPin === null) return;
+
+    if (enteredPin.trim() !== DELETE_ALL_JAMAAH_PIN) {
+      alert('PIN salah. Penghapusan dibatalkan.');
+      return;
+    }
+
+    const confirmation = window.confirm(
+      `Hapus semua jamaah untuk event "${selectedEvent.nama_event}"? Tindakan ini tidak dapat dibatalkan.`
     );
+
+    if (!confirmation) return;
+
+    setDeletingAll(true);
+
+    try {
+      const response = await fetch(`/api/peserta/event/${selectedEvent.id}?tipe=JAMAAH`, {
+        method: 'DELETE',
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        setParticipants([]);
+        setStats({ total: 0, attended: 0, winners: 0, eligible: 0 });
+        setTotalParticipants(0);
+        setTotalPages(1);
+        setCurrentPage(1);
+        alert('Seluruh data jamaah berhasil dihapus');
+      } else {
+        alert(`Gagal menghapus data jamaah: ${data.error}`);
+      }
+    } catch (error) {
+      console.error('Delete all jamaah error:', error);
+      alert('Gagal menghapus data jamaah');
+    } finally {
+      setDeletingAll(false);
+    }
+  };
+
+  const safeTotalPages = Math.max(1, totalPages);
+  const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+
+  const getVisiblePages = () => {
+    if (safeTotalPages <= 5) {
+      return Array.from({ length: safeTotalPages }, (_, i) => i + 1);
+    }
+
+    if (currentPage <= 3) {
+      return [1, 2, 3, 4, 5];
+    }
+
+    if (currentPage >= safeTotalPages - 2) {
+      return [safeTotalPages - 4, safeTotalPages - 3, safeTotalPages - 2, safeTotalPages - 1, safeTotalPages];
+    }
+
+    return [currentPage - 2, currentPage - 1, currentPage, currentPage + 1, currentPage + 2];
+  };
 
   if (loading || !selectedEvent) {
     return (
@@ -272,13 +355,20 @@ export default function JamaahPage() {
       </div>
 
       {/* Bulk Actions */}
-      {filteredParticipants.length > 0 && (
-        <div className="flex justify-end gap-3">
+      {totalParticipants > 0 && (
+        <div className="flex justify-end gap-3 flex-wrap">
+          <button
+            onClick={handleDeleteAllJamaah}
+            disabled={deletingAll}
+            className="px-6 py-3 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-lg transition shadow-lg shadow-red-600/50 disabled:bg-gray-700 disabled:text-gray-400 disabled:shadow-none"
+          >
+            {deletingAll ? 'Menghapus...' : 'Hapus Semua Jamaah (sementara)'}
+          </button>
           <button
             onClick={exportParticipantData}
             className="px-6 py-3 bg-green-600 hover:bg-green-700 text-white font-semibold rounded-lg transition shadow-lg shadow-green-600/50"
           >
-            Export Data Excel ({participants.length})
+            Export Data Excel ({totalParticipants})
           </button>
         </div>
       )}
@@ -296,7 +386,7 @@ export default function JamaahPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-yellow-500/20">
-              {filteredParticipants.map((jamaah) => (
+              {participants.map((jamaah) => (
                 <tr key={jamaah.id} className="hover:bg-[#0a0a0a] transition">
                   <td className="px-6 py-4 text-sm font-bold text-yellow-500">{jamaah.kode_unik}</td>
                   <td className="px-6 py-4 text-sm font-semibold text-white">{jamaah.nama}</td>
@@ -309,7 +399,47 @@ export default function JamaahPage() {
         </div>
       </div>
 
-      {filteredParticipants.length === 0 && (
+      {totalParticipants > 0 && (
+        <div className="bg-[#1a1a1a] rounded-lg border border-yellow-500/20 p-4 flex flex-col md:flex-row items-center justify-between gap-4">
+          <div className="text-sm text-gray-400">
+            Menampilkan {startIndex + 1} - {Math.min(startIndex + participants.length, totalParticipants)} dari {totalParticipants} jamaah
+          </div>
+
+          <div className="flex items-center gap-2 flex-wrap justify-center">
+            <button
+              onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+              disabled={currentPage === 1}
+              className="px-3 py-2 bg-[#0a0a0a] text-gray-300 border border-yellow-500/20 rounded-lg hover:border-yellow-500/40 transition disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              Sebelumnya
+            </button>
+
+            {getVisiblePages().map((page) => (
+              <button
+                key={page}
+                onClick={() => setCurrentPage(page)}
+                className={`w-10 h-10 rounded-lg text-sm font-semibold transition ${
+                  currentPage === page
+                    ? 'bg-yellow-500 text-black shadow-lg shadow-yellow-500/40'
+                    : 'bg-[#0a0a0a] text-gray-300 border border-yellow-500/20 hover:border-yellow-500/40'
+                }`}
+              >
+                {page}
+              </button>
+            ))}
+
+            <button
+              onClick={() => setCurrentPage(prev => Math.min(safeTotalPages, prev + 1))}
+              disabled={currentPage === safeTotalPages}
+              className="px-3 py-2 bg-[#0a0a0a] text-gray-300 border border-yellow-500/20 rounded-lg hover:border-yellow-500/40 transition disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              Berikutnya
+            </button>
+          </div>
+        </div>
+      )}
+
+      {totalParticipants === 0 && (
         <div className="text-center py-12 bg-[#1a1a1a] rounded-lg border border-yellow-500/20">
           <p className="text-gray-400 text-lg">Tidak ada jamaah ditemukan</p>
         </div>
