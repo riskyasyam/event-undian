@@ -7,7 +7,7 @@
  * Menampilkan 6 nama sekaligus dengan item tengah sebagai posisi pemenang
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 interface Peserta {
   id: string;
@@ -21,6 +21,8 @@ interface SlotUndianProps {
   onWinner?: (winner: Peserta) => void;
   speed?: 'NORMAL' | 'DRAMATIS';  // Control spin speed & drama
   autoStartSignal?: number;
+  continuousSpin?: boolean;
+  stopAtWinner?: Peserta | null;
   showControls?: boolean;
   showWinnerCard?: boolean;
   spinButtonLabel?: string;
@@ -31,6 +33,8 @@ export default function SlotUndian({
   onWinner,
   speed = 'NORMAL',
   autoStartSignal,
+  continuousSpin = false,
+  stopAtWinner = null,
   showControls = true,
   showWinnerCard = true,
   spinButtonLabel = 'Mulai Undian',
@@ -39,6 +43,9 @@ export default function SlotUndian({
   const [winner, setWinner] = useState<Peserta | null>(null);
   const [offset, setOffset] = useState(0);
   const [displayOffset, setDisplayOffset] = useState(0);
+  const animationFrameRef = useRef<number | null>(null);
+  const offsetRef = useRef(0);
+  const continuousSpinRef = useRef(false);
   const showIdlePlaceholder = !isSpinning && !winner;
 
   // Konstanta
@@ -55,6 +62,86 @@ export default function SlotUndian({
   // Durasi spin berdasarkan speed setting
   const SPIN_DURATION = speed === 'DRAMATIS' ? 12000 : 4500; // 12s untuk dramatis (4s cepat + 8s pelan), 4.5s untuk normal
 
+  const cancelAnimation = () => {
+    if (animationFrameRef.current !== null) {
+      cancelAnimationFrame(animationFrameRef.current);
+      animationFrameRef.current = null;
+    }
+  };
+
+  const startContinuousSpin = () => {
+    if (peserta.length === 0) return;
+
+    cancelAnimation();
+    continuousSpinRef.current = true;
+    setWinner(null);
+    setIsSpinning(true);
+
+    const pixelsPerSecond = speed === 'DRAMATIS' ? 1400 : 1100;
+    let lastTimestamp = performance.now();
+
+    const animate = (timestamp: number) => {
+      if (!continuousSpinRef.current) return;
+
+      const deltaSeconds = (timestamp - lastTimestamp) / 1000;
+      lastTimestamp = timestamp;
+
+      const nextOffset = offsetRef.current + (pixelsPerSecond * deltaSeconds);
+      offsetRef.current = nextOffset;
+      setDisplayOffset(nextOffset);
+
+      animationFrameRef.current = requestAnimationFrame(animate);
+    };
+
+    animationFrameRef.current = requestAnimationFrame(animate);
+  };
+
+  const stopContinuousSpinAtWinner = (finalWinner: Peserta) => {
+    if (peserta.length === 0) return;
+
+    continuousSpinRef.current = false;
+    cancelAnimation();
+
+    const winnerIndex = peserta.findIndex((item) => item.id === finalWinner.id);
+    if (winnerIndex < 0) {
+      setIsSpinning(false);
+      setWinner(finalWinner);
+      return;
+    }
+
+    const startOffset = offsetRef.current;
+    const currentIndex = Math.floor(startOffset / ITEM_HEIGHT);
+    const targetIndex = currentIndex + (peserta.length * 2) + winnerIndex;
+    const targetOffset = (targetIndex * ITEM_HEIGHT) - (CENTER_INDEX * ITEM_HEIGHT);
+    const stopDuration = speed === 'DRAMATIS' ? 1600 : 1000;
+    const startTime = performance.now();
+
+    const easeOutCubic = (value: number) => 1 - Math.pow(1 - value, 3);
+
+    const animateStop = (timestamp: number) => {
+      const elapsed = timestamp - startTime;
+      const progress = Math.min(elapsed / stopDuration, 1);
+      const eased = easeOutCubic(progress);
+      const nextOffset = startOffset + ((targetOffset - startOffset) * eased);
+
+      offsetRef.current = nextOffset;
+      setDisplayOffset(nextOffset);
+
+      if (progress < 1) {
+        animationFrameRef.current = requestAnimationFrame(animateStop);
+      } else {
+        cancelAnimation();
+        offsetRef.current = targetOffset;
+        setOffset(targetOffset);
+        setDisplayOffset(targetOffset);
+        setIsSpinning(false);
+        setWinner(finalWinner);
+      }
+    };
+
+    animationFrameRef.current = requestAnimationFrame(animateStop);
+  };
+
   const getParticipantAt = (index: number) => {
     const normalizedIndex = ((index % peserta.length) + peserta.length) % peserta.length;
     return peserta[normalizedIndex];
@@ -65,6 +152,8 @@ export default function SlotUndian({
     if (isSpinning || peserta.length === 0) return;
 
     // Reset winner
+    cancelAnimation();
+    continuousSpinRef.current = false;
     setWinner(null);
     setIsSpinning(true);
 
@@ -81,7 +170,7 @@ export default function SlotUndian({
 
     // Mulai animasi dengan requestAnimationFrame
     const startTime = Date.now();
-    const startOffset = offset;
+    const startOffset = offsetRef.current;
 
     const animate = () => {
       const currentTime = Date.now();
@@ -115,12 +204,15 @@ export default function SlotUndian({
 
       const currentOffset = startOffset + (targetOffset - startOffset) * easedProgress;
 
+      offsetRef.current = currentOffset;
       setDisplayOffset(currentOffset);
 
       if (progress < 1) {
-        requestAnimationFrame(animate);
+        animationFrameRef.current = requestAnimationFrame(animate);
       } else {
         // Animasi selesai
+        cancelAnimation();
+        offsetRef.current = targetOffset;
         setOffset(targetOffset);
         setDisplayOffset(targetOffset);
         setIsSpinning(false);
@@ -133,13 +225,16 @@ export default function SlotUndian({
       }
     };
 
-    requestAnimationFrame(animate);
+    animationFrameRef.current = requestAnimationFrame(animate);
   };
 
   // Reset offset saat peserta berubah
   useEffect(() => {
+    if (continuousSpinRef.current || isSpinning) return;
+
     setOffset(0);
     setDisplayOffset(0);
+    offsetRef.current = 0;
     setWinner(null);
   }, [peserta]);
 
@@ -149,6 +244,34 @@ export default function SlotUndian({
     handleSpin();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoStartSignal]);
+
+  useEffect(() => {
+    if (continuousSpin) {
+      startContinuousSpin();
+      return;
+    }
+
+    if (!continuousSpin && !stopAtWinner && continuousSpinRef.current) {
+      continuousSpinRef.current = false;
+      cancelAnimation();
+      setOffset(offsetRef.current);
+      setDisplayOffset(offsetRef.current);
+      setIsSpinning(false);
+      return;
+    }
+
+    if (!continuousSpin && stopAtWinner && isSpinning) {
+      stopContinuousSpinAtWinner(stopAtWinner);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [continuousSpin, stopAtWinner]);
+
+  useEffect(() => {
+    return () => {
+      continuousSpinRef.current = false;
+      cancelAnimation();
+    };
+  }, []);
 
   // Hitung style untuk setiap item berdasarkan posisi relatif ke tengah
   const getItemStyle = (index: number) => {

@@ -170,6 +170,9 @@ export async function drawLottery(input: DrawLotteryInput): Promise<DrawLotteryR
       }
 
       return winners;
+    }, {
+      maxWait: 10000,
+      timeout: 30000,
     });
 
     return {

@@ -5,7 +5,7 @@
  * /admin/undi
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import SlotUndian from '@/components/SlotUndian';
 import * as XLSX from 'xlsx';
 
@@ -77,10 +77,14 @@ export default function UndiPage() {
   const [batchWinners, setBatchWinners] = useState<Participant[]>([]);
   const [autoSpinSignal, setAutoSpinSignal] = useState(0);
   const [autoDrawingAll, setAutoDrawingAll] = useState(false);
+  const [continuousSpinning, setContinuousSpinning] = useState(false);
+  const [stopAtWinner, setStopAtWinner] = useState<Participant | null>(null);
   const [prizeRemainingSlots, setPrizeRemainingSlots] = useState<number>(0);
   const [resettingLottery, setResettingLottery] = useState(false);
   const [resettingPrizeId, setResettingPrizeId] = useState<string | null>(null);
   const [openingPrizeId, setOpeningPrizeId] = useState<string | null>(null);
+  const liveWinnersScrollRef = useRef<HTMLDivElement | null>(null);
+  const finalWinnersScrollRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     fetchMainEvent();
@@ -126,6 +130,18 @@ export default function UndiPage() {
 
     return () => clearInterval(timer);
   }, [selectedEvent]);
+
+  useEffect(() => {
+    if (batchWinners.length === 0) return;
+
+    if (!showSuccess && liveWinnersScrollRef.current) {
+      liveWinnersScrollRef.current.scrollTop = liveWinnersScrollRef.current.scrollHeight;
+    }
+
+    if (showSuccess && finalWinnersScrollRef.current) {
+      finalWinnersScrollRef.current.scrollTop = finalWinnersScrollRef.current.scrollHeight;
+    }
+  }, [batchWinners, showSuccess]);
 
   const checkLotteryTime = () => {
     if (!selectedEvent?.waktu_undian) {
@@ -189,32 +205,18 @@ export default function UndiPage() {
 
     setLoadingParticipants(true);
     try {
-      // Determine tipe based on prize, or fetch all if no prize specified
-      const tipeParam = prize ? `?tipe=${prize.tipe_peserta || 'PESERTA'}` : '';
-      const paginationParam = `${tipeParam ? '&' : '?'}page=1&pageSize=5000`;
-      const response = await fetch(`/api/peserta/event/${selectedEvent.id}${tipeParam}${paginationParam}`);
+      const tipe = prize?.tipe_peserta || 'PESERTA';
+      const params = new URLSearchParams({
+        tipe,
+        forLottery: '1',
+        pageSize: '5000',
+      });
+
+      const response = await fetch(`/api/peserta/event/${selectedEvent.id}?${params.toString()}`);
       const data = await response.json();
 
       if (data.success) {
-        // Filter eligible participants berdasarkan tipe
-        const isJamaah = prize?.tipe_peserta === 'JAMAAH';
-        
-        let eligible;
-        if (isJamaah) {
-          // JAMAAH: Tidak perlu presensi, hanya belum menang
-          eligible = data.data.participants.filter(
-            (p: Participant & { status_hadir: boolean; sudah_menang: boolean }) => 
-              !p.sudah_menang
-          );
-        } else {
-          // PESERTA: Harus hadir DAN belum menang
-          eligible = data.data.participants.filter(
-            (p: Participant & { status_hadir: boolean; sudah_menang: boolean }) => 
-              p.status_hadir && !p.sudah_menang
-          );
-        }
-        
-        setParticipants(eligible);
+        setParticipants(data.data.participants || []);
       }
     } catch (error) {
       console.error('Failed to fetch participants:', error);
@@ -266,6 +268,8 @@ export default function UndiPage() {
     setBatchWinners([]);
     setAutoSpinSignal(0);
     setAutoDrawingAll(false);
+    setContinuousSpinning(false);
+    setStopAtWinner(null);
     setPrizeRemainingSlots(prize.remainingSlots); // Set initial remaining slots
     await fetchEligibleParticipants(prize); // Pass prize to filter by type
     // Only show slot after participants are fully loaded
@@ -275,105 +279,84 @@ export default function UndiPage() {
     }, 100);
   };
 
-  const handleSlotWinner = async (winner: Participant) => {
+  const drawSpecificWinner = async (winner: Participant) => {
     setSelectedWinner(winner);
-    setDrawing(true);
     
     console.log('� Slot machine selected winner:', winner.nama, '| ID:', winner.id);
 
+    // ALWAYS send peserta_id from slot machine winner
+    // Slot machine sudah pilih winner secara fair dari displayed participants
+    const requestBody = {
+      hadiah_id: selectedPrizeForDraw?.id,
+      peserta_id: winner.id,
+    };
+
+    console.log('📤 Sending to API:', requestBody);
+
+    const response = await fetch('/api/lottery/draw', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(requestBody),
+    });
+
+    const data = await response.json();
+
+    if (!data.success) {
+      throw new Error(data.error || 'Gagal mengundi');
+    }
+
+    console.log('📥 API Response:', data.data.winners.map((w: any) => w.nama).join(', '));
+
+    // Transform winners data to match expected format
+    const transformedWinners = data.data.winners.map((w: any) => ({
+      id: w.pemenang?.id || w.id,
+      drawn_at: w.pemenang?.drawn_at || new Date(),
+      peserta: {
+        id: w.id,
+        nama: w.nama,
+        email: w.email,
+        nomor_telepon: w.nomor_telepon,
+      },
+      hadiah: {
+        nama_hadiah: selectedPrizeForDraw?.nama_hadiah || '',
+      },
+    }));
+
+    console.log('✅ Winners saved:', transformedWinners.map((w: any) => w.peserta.nama).join(', '));
+
+    return transformedWinners;
+  };
+
+  const handleSlotWinner = async (winner: Participant) => {
+    setDrawing(true);
+
     try {
-      // ALWAYS send peserta_id from slot machine winner
-      // Slot machine sudah pilih winner secara fair dari displayed participants
-      const requestBody = { 
-        hadiah_id: selectedPrizeForDraw?.id, 
-        peserta_id: winner.id 
-      };
-      
-      console.log('📤 Sending to API:', requestBody);
+      const transformedWinners = await drawSpecificWinner(winner);
 
-      const response = await fetch('/api/lottery/draw', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(requestBody),
-      });
+      // IMMEDIATELY remove pemenang dari local participants untuk mencegah race condition
+      const winnerIds = new Set(transformedWinners.map((w: any) => w.peserta.id));
+      setParticipants((prev) => prev.filter((p) => !winnerIds.has(p.id)));
 
-      const data = await response.json();
+      const newRemainingSlots = Math.max(0, prizeRemainingSlots - transformedWinners.length);
+      setPrizeRemainingSlots(newRemainingSlots);
 
-      if (data.success) {
-        console.log('📥 API Response:', data.data.winners.map((w: any) => w.nama).join(', '));
-
-        // Transform winners data to match expected format
-        const transformedWinners = data.data.winners.map((w: any) => ({
-          id: w.pemenang?.id || w.id,
-          drawn_at: w.pemenang?.drawn_at || new Date(),
-          peserta: {
-            id: w.id,
-            nama: w.nama,
-            email: w.email,
-            nomor_telepon: w.nomor_telepon
-          },
-          hadiah: {
-            nama_hadiah: selectedPrizeForDraw?.nama_hadiah || ''
-          }
-        }));
-
-        console.log('✅ Winners saved:', transformedWinners.map((w: any) => w.peserta.nama).join(', '));
-
-        // IMMEDIATELY remove pemenang dari local participants untuk mencegah race condition
-        const winnerIds = new Set(transformedWinners.map((w: any) => w.peserta.id));
-        setParticipants((prev) => prev.filter((p) => !winnerIds.has(p.id)));
-
-        // Update remainingSlots setelah undi
-        let newRemainingSlots = 0;
-        setPrizeRemainingSlots((prev) => {
-          newRemainingSlots = Math.max(0, prev - transformedWinners.length);
-          return newRemainingSlots;
-        });
-
-        // Use actual winner from API response
-        const winnerPeserta = transformedWinners[0]?.peserta || null;
-        setLastWinner(winnerPeserta);
-        if (winnerPeserta) {
-          setBatchWinners((prev) => [...prev, winnerPeserta]);
-        }
-
-        const isAllMode = selectedPrizeForDraw?.mode_undian === 'SEMUA';
-        
-        // Refresh prizes & winners list di background (participant sudah dihapus lokal)
-        if (newRemainingSlots > 0) {
-          await Promise.all([
-            fetchPrizes(),
-            fetchWinners()
-          ]);
-        } else {
-          // Last winner - update UI
-          await Promise.all([fetchPrizes(), fetchWinners()]);
-        }
-
-        // Determine next action IMMEDIATELY (no delay)
-        if (isAllMode && newRemainingSlots > 0) {
-          // SEMUA mode: langsung undi lagi tanpa animasi/loading
-          setShowSuccess(false);
-          setAutoDrawingAll(true);
-          setDrawing(false);
-          // Trigger next spin immediately
-          setAutoSpinSignal((prev) => prev + 1);
-        } else {
-          // SATU mode atau pemenang terakhir: Trigger confetti dan tunjukkan success
-          setAutoDrawingAll(false);
-          setDrawing(false);
-          triggerConfetti();
-          setShowSuccess(true);
-        }
-      } else {
-        alert(`Gagal mengundi: ${data.error}`);
-        setDrawing(false);
-        setShowSuccess(false);
-        setAutoDrawingAll(false);
+      // Use actual winner from API response
+      const winnerPeserta = transformedWinners[0]?.peserta || null;
+      setLastWinner(winnerPeserta);
+      if (winnerPeserta) {
+        setBatchWinners((prev) => [...prev, winnerPeserta]);
       }
+
+      await Promise.all([fetchPrizes(), fetchWinners()]);
+
+      // SATU mode atau pemenang terakhir: Trigger confetti dan tunjukkan success
+      setAutoDrawingAll(false);
+      setDrawing(false);
+      triggerConfetti();
+      setShowSuccess(true);
     } catch (error) {
       console.error('Draw error:', error);
-      alert('Gagal mengundi');
+      alert(error instanceof Error ? error.message : 'Gagal mengundi');
       setDrawing(false);
       setShowSuccess(false);
       setAutoDrawingAll(false);
@@ -387,14 +370,75 @@ export default function UndiPage() {
     // Participants & prizeRemainingSlots sudah di-update otomatis setelah undi
   };
 
-  const handleStartAutoDraw = () => {
+  const handleStartAutoDraw = async () => {
     if (!selectedPrizeForDraw || drawing || autoDrawingAll || prizeRemainingSlots <= 0) return;
 
     setBatchWinners([]);
     setShowSuccess(false);
     setLastWinner(null);
+    setStopAtWinner(null);
     setAutoDrawingAll(true);
-    setAutoSpinSignal((prev) => prev + 1);
+    setContinuousSpinning(true);
+    setDrawing(true);
+
+    let workingParticipants = [...participants];
+    let remainingSlots = prizeRemainingSlots;
+    let finalWinner: Participant | null = null;
+
+    try {
+      while (remainingSlots > 0 && workingParticipants.length > 0) {
+        const randomIndex = Math.floor(Math.random() * workingParticipants.length);
+        const picked = workingParticipants[randomIndex];
+
+        const transformedWinners = await drawSpecificWinner(picked);
+        const winnerPeserta = transformedWinners[0]?.peserta || null;
+
+        if (!winnerPeserta) {
+          throw new Error('Data pemenang tidak valid');
+        }
+
+        finalWinner = winnerPeserta;
+        setLastWinner(winnerPeserta);
+        setBatchWinners((prev) => [...prev, winnerPeserta]);
+
+        const nextRemainingSlots = Math.max(0, remainingSlots - transformedWinners.length);
+        setPrizeRemainingSlots(nextRemainingSlots);
+
+        const filteredParticipants = workingParticipants.filter((p) => p.id !== winnerPeserta.id);
+
+        // Keep last winner in slot list so animation can stop exactly on that name.
+        if (nextRemainingSlots > 0) {
+          workingParticipants = filteredParticipants;
+          setParticipants(filteredParticipants);
+        }
+
+        remainingSlots = nextRemainingSlots;
+      }
+
+      await Promise.all([fetchPrizes(), fetchWinners()]);
+
+      if (finalWinner) {
+        setStopAtWinner(finalWinner);
+      }
+
+      setContinuousSpinning(false);
+      setAutoDrawingAll(false);
+      setDrawing(false);
+
+      if (finalWinner) {
+        setTimeout(() => {
+          triggerConfetti();
+          setShowSuccess(true);
+        }, 1200);
+      }
+    } catch (error) {
+      console.error('Auto draw all error:', error);
+      alert(error instanceof Error ? error.message : 'Gagal mengundi otomatis');
+      setContinuousSpinning(false);
+      setAutoDrawingAll(false);
+      setDrawing(false);
+      setShowSuccess(false);
+    }
   };
 
   const handleSelesaiUndi = () => {
@@ -405,6 +449,8 @@ export default function UndiPage() {
     setBatchWinners([]);
     setAutoSpinSignal(0);
     setAutoDrawingAll(false);
+    setContinuousSpinning(false);
+    setStopAtWinner(null);
     setParticipants([]);
     setSelectedPrizeForDraw(null);
     setPrizeRemainingSlots(0);
@@ -667,7 +713,10 @@ export default function UndiPage() {
                               </div>
                               
                               {/* Daftar semua pemenang */}
-                              <div className="bg-black/30 rounded-lg p-4 mb-6 text-left max-h-56 overflow-y-auto">
+                              <div
+                                ref={finalWinnersScrollRef}
+                                className="bg-black/30 rounded-lg p-4 mb-6 text-left max-h-56 overflow-y-auto"
+                              >
                                 <div className="text-sm font-semibold text-yellow-500 mb-3 text-center">Daftar Pemenang</div>
                                 <div className="space-y-2">
                                   {batchWinners.map((winner, idx) => (
@@ -692,14 +741,6 @@ export default function UndiPage() {
                               </div>
                             </>
                           )}
-                          
-                          {/* Info: sisa eligible dan slot */}
-                          <div className="grid gap-4 mb-6">
-                            <div className="text-sm text-gray-400 bg-black/20 rounded-lg p-3">
-                              <div className="text-xs mb-1">Sisa Slot Hadiah</div>
-                              <div className="text-2xl font-bold text-yellow-500">{prizeRemainingSlots}</div>
-                            </div>
-                          </div>
                         </div>
                       </div>
                     )}
@@ -707,32 +748,59 @@ export default function UndiPage() {
                     {/* Slot Machine Component - Hide saat show success */}
                     {!showSuccess && (
                       <div className="mb-6">
-                        <SlotUndian 
-                          peserta={participants}
-                          onWinner={handleSlotWinner}
-                          speed={selectedPrizeForDraw?.kecepatan_undian as 'NORMAL' | 'DRAMATIS' || 'NORMAL'}
-                          autoStartSignal={autoSpinSignal}
-                          showControls={selectedPrizeForDraw.mode_undian !== 'SEMUA'}
-                          showWinnerCard={selectedPrizeForDraw.mode_undian !== 'SEMUA'}
-                          spinButtonLabel="Mulai Undian"
-                        />
-                      </div>
-                    )}
-
-                    {selectedPrizeForDraw.mode_undian === 'SEMUA' && batchWinners.length > 0 && (
-                      <div className="mb-6 bg-black/20 border border-yellow-500/20 rounded-xl p-4">
-                        <div className="flex items-center justify-between mb-3">
-                          <h4 className="text-sm font-semibold text-yellow-500">Pemenang Terkumpul</h4>
-                          <span className="text-xs text-gray-400">{batchWinners.length} orang</span>
-                        </div>
-                        <div className="max-h-52 overflow-y-auto space-y-2 pr-1">
-                          {batchWinners.map((winner, idx) => (
-                            <div key={`${winner.id}-${idx}`} className="rounded-lg border border-yellow-500/10 bg-black/30 px-3 py-2 text-sm">
-                              <div className="font-semibold text-white">{idx + 1}. {winner.nama}</div>
-                              <div className="text-yellow-300 text-xs mt-0.5">{winner.nomor_telepon || '-'}</div>
+                        {selectedPrizeForDraw.mode_undian === 'SEMUA' ? (
+                          <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_360px] gap-4 items-start">
+                            <div>
+                              <SlotUndian 
+                                peserta={participants}
+                                onWinner={handleSlotWinner}
+                                speed={selectedPrizeForDraw?.kecepatan_undian as 'NORMAL' | 'DRAMATIS' || 'NORMAL'}
+                                autoStartSignal={autoSpinSignal}
+                                continuousSpin={continuousSpinning}
+                                stopAtWinner={stopAtWinner}
+                                showControls={false}
+                                showWinnerCard={false}
+                                spinButtonLabel="Mulai Undian"
+                              />
                             </div>
-                          ))}
-                        </div>
+
+                            <div className="bg-black/20 border border-yellow-500/20 rounded-xl p-4 h-full">
+                              <div className="flex items-center justify-between mb-3">
+                                <h4 className="text-sm font-semibold text-yellow-500">Pemenang Terkumpul</h4>
+                                <span className="text-xs text-gray-400">{batchWinners.length} orang</span>
+                              </div>
+                              <div
+                                ref={liveWinnersScrollRef}
+                                className="max-h-90 overflow-y-auto space-y-2 pr-1"
+                              >
+                                {batchWinners.length === 0 ? (
+                                  <div className="rounded-lg border border-yellow-500/10 bg-black/30 px-3 py-5 text-sm text-center text-gray-400">
+                                    Menunggu pemenang pertama...
+                                  </div>
+                                ) : (
+                                  batchWinners.map((winner, idx) => (
+                                    <div key={`${winner.id}-${idx}`} className="rounded-lg border border-yellow-500/10 bg-black/30 px-3 py-2 text-sm">
+                                      <div className="font-semibold text-white">{idx + 1}. {winner.nama}</div>
+                                      <div className="text-yellow-300 text-xs mt-0.5">{winner.nomor_telepon || '-'}</div>
+                                    </div>
+                                  ))
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        ) : (
+                          <SlotUndian 
+                            peserta={participants}
+                            onWinner={handleSlotWinner}
+                            speed={selectedPrizeForDraw?.kecepatan_undian as 'NORMAL' | 'DRAMATIS' || 'NORMAL'}
+                            autoStartSignal={autoSpinSignal}
+                            continuousSpin={false}
+                            stopAtWinner={null}
+                            showControls={true}
+                            showWinnerCard={true}
+                            spinButtonLabel="Mulai Undian"
+                          />
+                        )}
                       </div>
                     )}
 

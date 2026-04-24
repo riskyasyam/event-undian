@@ -6,7 +6,12 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
-import { deleteAllPesertaByEvent, getPesertaByEvent, getPesertaStats } from '@/services/peserta.service';
+import {
+  deleteAllPesertaByEvent,
+  getEligibleParticipantsForLottery,
+  getPesertaByEvent,
+  getPesertaStats,
+} from '@/services/peserta.service';
 import { errorResponse, successResponse } from '@/lib/utils';
 import { TipePeserta } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
@@ -27,9 +32,21 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     const page = Number(searchParams.get('page') || '1');
     const pageSize = Number(searchParams.get('pageSize') || '10');
     const search = searchParams.get('search') || undefined;
+    const forLottery = searchParams.get('forLottery') === '1';
     const filterParam = searchParams.get('filter');
     const filter: 'all' | 'attended' | 'eligible' =
       filterParam === 'attended' || filterParam === 'eligible' ? filterParam : 'all';
+
+    if (forLottery) {
+      const lotteryTipe = tipe || TipePeserta.PESERTA;
+      const participants = await getEligibleParticipantsForLottery(eventId, lotteryTipe, pageSize || 5000);
+
+      return NextResponse.json(
+        successResponse({
+          participants,
+        })
+      );
+    }
     
     const pesertaResult = await getPesertaByEvent(eventId, {
       tipe: tipe || undefined,

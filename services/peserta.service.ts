@@ -39,6 +39,12 @@ export interface GetPesertaByEventOptions {
   filter?: 'all' | 'attended' | 'eligible';
 }
 
+export interface LotteryEligibleParticipant {
+  id: string;
+  nama: string;
+  nomor_telepon: string;
+}
+
 /**
  * Get current max numeric suffix from kode_unik (MU-001 -> 1)
  */
@@ -283,6 +289,37 @@ export async function getEligiblePeserta(eventId: string, tipe?: TipePeserta): P
       sudah_menang: false,
       ...(tipe && { tipe }),
     },
+  });
+}
+
+/**
+ * Fast path for lottery UI: only fetch fields required by slot animation.
+ * JAMAAH: belum menang
+ * PESERTA: hadir dan belum menang
+ */
+export async function getEligibleParticipantsForLottery(
+  eventId: string,
+  tipe: TipePeserta,
+  limit = 5000
+): Promise<LotteryEligibleParticipant[]> {
+  const safeLimit = Math.max(1, Math.min(limit, 10000));
+
+  return prisma.peserta.findMany({
+    where: {
+      event_id: eventId,
+      tipe,
+      sudah_menang: false,
+      ...(tipe !== TipePeserta.JAMAAH ? { status_hadir: true } : {}),
+    },
+    select: {
+      id: true,
+      nama: true,
+      nomor_telepon: true,
+    },
+    orderBy: {
+      created_at: 'desc',
+    },
+    take: safeLimit,
   });
 }
 
