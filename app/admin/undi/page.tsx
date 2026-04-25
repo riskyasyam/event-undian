@@ -677,8 +677,16 @@ export default function UndiPage() {
           {/* Slot Machine Modal */}
           {showSlot && selectedPrizeForDraw && (
             <div className="fixed inset-0 bg-black/95 backdrop-blur-sm flex items-center justify-center z-50 p-4 overflow-y-auto">
-              <div className="w-full h-full bg-[#1a1a1a] rounded-xl md:rounded-2xl shadow-2xl border border-yellow-500/20 p-4 md:p-6 overflow-y-auto">
-                <div className="max-w-6xl mx-auto">
+              <div className="relative w-full h-full rounded-xl md:rounded-2xl shadow-2xl border border-yellow-400/30 p-4 md:p-6 overflow-y-auto bg-linear-to-br from-[#120f05] via-[#1b1810] to-[#0a0a0a]">
+                <div className="pointer-events-none absolute inset-0 overflow-hidden">
+                  <div className="absolute inset-0 opacity-90 [background:radial-gradient(circle_at_20%_20%,rgba(250,204,21,0.16),transparent_30%),radial-gradient(circle_at_80%_10%,rgba(253,224,71,0.14),transparent_30%),radial-gradient(circle_at_50%_100%,rgba(234,179,8,0.12),transparent_45%)]"></div>
+                  <div className="absolute -top-28 left-1/2 h-80 w-80 -translate-x-1/2 rounded-full bg-yellow-400/15 blur-3xl animate-pulse"></div>
+                  <div className="absolute -bottom-24 right-10 h-72 w-72 rounded-full bg-amber-300/10 blur-3xl animate-pulse"></div>
+                  <div className="absolute inset-0 opacity-20 [background:linear-gradient(120deg,transparent_0%,rgba(251,191,36,0.35)_45%,transparent_70%)] animate-[spin_24s_linear_infinite]"></div>
+                  <div className="absolute inset-0 bg-black/35"></div>
+                </div>
+
+                <div className="max-w-6xl mx-auto relative z-10">
                 {/* Prize Info */}
                 <div className="text-center mb-6">
                   {selectedPrizeForDraw.gambar_url && (
