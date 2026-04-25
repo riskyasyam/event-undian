@@ -701,6 +701,9 @@ export default function UndiPage() {
                       }`}>
                         Undian untuk: {selectedPrizeForDraw.tipe_peserta === 'JAMAAH' ? 'Jamaah' : 'Peserta Milad'}
                       </span>
+                      <span className="px-4 py-1.5 text-sm md:text-base font-extrabold tracking-wide uppercase rounded-full border-2 bg-amber-400/20 text-amber-200 border-amber-300 shadow-lg shadow-amber-500/30 animate-pulse">
+                        🎯 Total pemenang: {selectedPrizeForDraw.jumlah_pemenang} orang
+                      </span>
                       <span className="px-3 py-1 text-xs font-medium rounded-full border bg-emerald-500/10 text-emerald-400 border-emerald-500/20">
                         Mode klik: {selectedPrizeForDraw.mode_undian === 'SEMUA' ? 'Semua langsung' : '1 pemenang'}
                       </span>
