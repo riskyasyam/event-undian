@@ -20,6 +20,7 @@ interface Peserta {
   nama: string;
   nomor_telepon: string;
   alamat: string;
+  status_hadir?: boolean;
 }
 
 interface PresensiItem {
@@ -38,6 +39,7 @@ interface Stats {
 
 export default function PresensiPage() {
   const ITEMS_PER_PAGE = 10;
+  const PESERTA_MODAL_PAGE_SIZE = 12;
   const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
   const [presensiList, setPresensiList] = useState<PresensiItem[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
@@ -49,6 +51,16 @@ export default function PresensiPage() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [resettingPresensi, setResettingPresensi] = useState(false);
   const [markingAllPresensi, setMarkingAllPresensi] = useState(false);
+  const [showPesertaModal, setShowPesertaModal] = useState(false);
+  const [pesertaModalPage, setPesertaModalPage] = useState(1);
+  const [pesertaModalSearchInput, setPesertaModalSearchInput] = useState('');
+  const [pesertaModalSearchQuery, setPesertaModalSearchQuery] = useState('');
+  const [pesertaModalLoading, setPesertaModalLoading] = useState(false);
+  const [pesertaModalList, setPesertaModalList] = useState<Peserta[]>([]);
+  const [pesertaModalTotal, setPesertaModalTotal] = useState(0);
+  const [pesertaModalTotalPages, setPesertaModalTotalPages] = useState(1);
+  const [selectedPesertaList, setSelectedPesertaList] = useState<Peserta[]>([]);
+  const [bulkPresensiSubmitting, setBulkPresensiSubmitting] = useState(false);
   
   // Form states
   const [kodePeserta, setKodePeserta] = useState('');
@@ -80,6 +92,60 @@ export default function PresensiPage() {
       fetchPresensi();
     }
   }, [selectedEvent, currentPage]);
+
+  useEffect(() => {
+    if (!showPesertaModal || !selectedEvent) return;
+
+    const fetchPesertaModal = async () => {
+      setPesertaModalLoading(true);
+
+      try {
+        const query = new URLSearchParams({
+          page: String(pesertaModalPage),
+          pageSize: String(PESERTA_MODAL_PAGE_SIZE),
+          filter: 'all',
+          tipe: 'PESERTA',
+        });
+
+        const trimmedSearch = pesertaModalSearchQuery.trim();
+        if (trimmedSearch) {
+          query.set('search', trimmedSearch);
+        }
+
+        const response = await fetch(`/api/peserta/event/${selectedEvent.id}?${query.toString()}`);
+        const data = await response.json();
+
+        if (data.success) {
+          setPesertaModalList(data.data.participants || []);
+          setPesertaModalTotal(data.data.pagination?.total || 0);
+          setPesertaModalTotalPages(data.data.pagination?.totalPages || 1);
+        } else {
+          setPesertaModalList([]);
+          setPesertaModalTotal(0);
+          setPesertaModalTotalPages(1);
+          setErrorMessage(data.error || 'Gagal mengambil daftar peserta');
+        }
+      } catch (error) {
+        console.error('Failed to fetch peserta modal:', error);
+        setPesertaModalList([]);
+        setPesertaModalTotal(0);
+        setPesertaModalTotalPages(1);
+        setErrorMessage('Gagal mengambil daftar peserta');
+      } finally {
+        setPesertaModalLoading(false);
+      }
+    };
+
+    fetchPesertaModal();
+  }, [showPesertaModal, selectedEvent, pesertaModalPage, pesertaModalSearchQuery]);
+
+  useEffect(() => {
+    setSelectedPesertaList([]);
+    setPesertaModalPage(1);
+    setPesertaModalSearchInput('');
+    setPesertaModalSearchQuery('');
+    setShowPesertaModal(false);
+  }, [selectedEvent?.id]);
 
   const fetchMainEvent = async () => {
     try {
@@ -150,16 +216,7 @@ export default function PresensiPage() {
     const minDelay = 1000; // Minimum 1 second to show loading modal
 
     try {
-      const response = await fetch('/api/presensi/submit', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          kode_peserta: kodePesertaToSubmit,
-          metode,
-        }),
-      });
-
-      const data = await response.json();
+      const data = await submitPresensiRequest(kodePesertaToSubmit, metode);
       
       // Ensure minimum delay so loading modal is visible
       const elapsed = Date.now() - startTime;
@@ -167,9 +224,11 @@ export default function PresensiPage() {
         await new Promise(resolve => setTimeout(resolve, minDelay - elapsed));
       }
 
-      if (data.success) {
-        const pesertaNama = data.data.peserta.nama;
-        setSuccessMessage(`✓ Presensi berhasil! ${pesertaNama} - ${data.data.peserta.kode_unik}`);
+      const presensiData = data.data;
+
+      if (data.success && presensiData) {
+        const pesertaNama = presensiData.peserta.nama;
+        setSuccessMessage(`✓ Presensi berhasil! ${pesertaNama} - ${presensiData.peserta.kode_unik}`);
         setKodePeserta('');
         fetchPresensi(); // Refresh list
 
@@ -234,6 +293,131 @@ export default function PresensiPage() {
       }
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const submitPresensiRequest = async (
+    kodePesertaToSubmit: string,
+    metodeSubmit: 'manual' | 'qrcode'
+  ): Promise<{
+    success: boolean;
+    data?: {
+      presensi_id: string;
+      peserta: {
+        id: string;
+        kode_unik: string;
+        nama: string;
+        nomor_telepon?: string;
+      };
+      waktu_hadir: string;
+    };
+    error?: string;
+  }> => {
+    const response = await fetch('/api/presensi/submit', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        kode_peserta: kodePesertaToSubmit,
+        metode: metodeSubmit,
+      }),
+    });
+
+    return response.json();
+  };
+
+  const openPesertaModal = () => {
+    setPesertaModalPage(1);
+    setPesertaModalSearchInput('');
+    setPesertaModalSearchQuery('');
+    setShowPesertaModal(true);
+  };
+
+  const isPesertaSelected = (pesertaId: string) => {
+    return selectedPesertaList.some((item) => item.id === pesertaId);
+  };
+
+  const togglePesertaSelection = (peserta: Peserta) => {
+    if (peserta.status_hadir) return;
+
+    setSelectedPesertaList((prev) => {
+      const isSelected = prev.some((item) => item.id === peserta.id);
+      if (isSelected) {
+        return prev.filter((item) => item.id !== peserta.id);
+      }
+
+      return [...prev, peserta];
+    });
+  };
+
+  const handleSelectVisiblePeserta = () => {
+    const selectableParticipants = pesertaModalList.filter((item) => !item.status_hadir);
+
+    setSelectedPesertaList((prev) => {
+      const nextMap = new Map(prev.map((item) => [item.id, item]));
+
+      selectableParticipants.forEach((participant) => {
+        nextMap.set(participant.id, participant);
+      });
+
+      return Array.from(nextMap.values());
+    });
+  };
+
+  const handleClearSelectedPeserta = () => {
+    setSelectedPesertaList([]);
+  };
+
+  const handleSearchPeserta = (e: React.FormEvent) => {
+    e.preventDefault();
+    setPesertaModalPage(1);
+    setPesertaModalSearchQuery(pesertaModalSearchInput.trim());
+  };
+
+  const handleBulkPresensi = async () => {
+    if (!selectedEvent || bulkPresensiSubmitting || selectedPesertaList.length === 0) return;
+
+    setBulkPresensiSubmitting(true);
+    setIsProcessing(true);
+    setErrorMessage('');
+    setSuccessMessage('');
+
+    const berhasil: string[] = [];
+    const gagal: string[] = [];
+
+    try {
+      for (const peserta of selectedPesertaList) {
+        try {
+          const hasil = await submitPresensiRequest(peserta.kode_unik, 'manual');
+          if (hasil.success && hasil.data) {
+            berhasil.push(hasil.data.peserta.nama);
+          } else {
+            throw new Error(hasil.error || 'Gagal mencatat presensi');
+          }
+        } catch (error) {
+          const message = error instanceof Error ? error.message : 'Gagal mencatat presensi';
+          gagal.push(`${peserta.nama}: ${message}`);
+        }
+      }
+
+      await fetchPresensi();
+
+      if (gagal.length === 0) {
+        setSuccessMessage(`✓ ${berhasil.length} peserta berhasil dipresensi manual.`);
+        setSelectedPesertaList([]);
+        setShowPesertaModal(false);
+      } else if (berhasil.length > 0) {
+        setSuccessMessage(`✓ ${berhasil.length} peserta berhasil dipresensi. ${gagal.length} peserta gagal.`);
+      }
+
+      if (gagal.length > 0) {
+        setErrorMessage(`⚠ ${gagal.length} peserta belum berhasil dipresensi.`);
+      }
+    } catch (error) {
+      console.error('Bulk presensi error:', error);
+      setErrorMessage('Terjadi kesalahan saat memproses presensi terpilih');
+    } finally {
+      setBulkPresensiSubmitting(false);
+      setIsProcessing(false);
     }
   };
 
@@ -575,13 +759,58 @@ export default function PresensiPage() {
               </p>
             </div>
 
-            <button
-              type="submit"
-              disabled={submitting || !kodePeserta.trim()}
-              className="w-full py-3 bg-yellow-500 hover:bg-yellow-600 text-black font-bold rounded-lg transition shadow-lg shadow-yellow-500/50 disabled:bg-gray-700 disabled:text-gray-500 disabled:shadow-none text-base md:text-lg"
-            >
-              {submitting ? 'Menyimpan...' : 'Simpan Presensi'}
-            </button>
+            <div className="flex flex-col gap-3 sm:flex-row">
+              <button
+                type="button"
+                onClick={openPesertaModal}
+                className="w-full sm:flex-1 rounded-lg border border-yellow-500/30 bg-yellow-500/10 px-4 py-3 font-semibold text-yellow-300 transition hover:bg-yellow-500/15"
+              >
+                Pilih dari Daftar Peserta
+              </button>
+
+              <button
+                type="submit"
+                disabled={submitting || !kodePeserta.trim()}
+                className="w-full sm:flex-1 py-3 bg-yellow-500 hover:bg-yellow-600 text-black font-bold rounded-lg transition shadow-lg shadow-yellow-500/50 disabled:bg-gray-700 disabled:text-gray-500 disabled:shadow-none text-base md:text-lg"
+              >
+                {submitting ? 'Menyimpan...' : 'Simpan Presensi Manual'}
+              </button>
+            </div>
+
+            {selectedPesertaList.length > 0 && (
+              <div className="rounded-2xl border border-yellow-500/20 bg-[#0f0f0f] p-4">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <div className="text-sm font-semibold text-yellow-400">{selectedPesertaList.length} peserta dipilih</div>
+                    <div className="mt-1 text-xs text-gray-500">Klik presensi terpilih dari modal untuk memproses semua sekaligus.</div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleClearSelectedPeserta}
+                    className="text-xs font-semibold text-gray-300 transition hover:text-white"
+                  >
+                    Bersihkan
+                  </button>
+                </div>
+
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {selectedPesertaList.slice(0, 4).map((peserta) => (
+                    <span
+                      key={peserta.id}
+                      className="inline-flex items-center gap-2 rounded-full border border-yellow-500/20 bg-yellow-500/10 px-3 py-1 text-xs text-yellow-200"
+                    >
+                      <span className="font-semibold">{peserta.kode_unik}</span>
+                      <span>{peserta.nama}</span>
+                    </span>
+                  ))}
+                  {selectedPesertaList.length > 4 && (
+                    <span className="inline-flex items-center rounded-full border border-yellow-500/20 bg-white/5 px-3 py-1 text-xs text-gray-300">
+                      +{selectedPesertaList.length - 4} lainnya
+                    </span>
+                  )}
+                </div>
+              </div>
+            )}
           </form>
         )}
 
@@ -720,8 +949,8 @@ export default function PresensiPage() {
               scanModal.mode === 'loading'
                 ? 'border-yellow-500/50 bg-[#1a1a1a] shadow-2xl shadow-yellow-500/20'
                 : scanModal.mode === 'success'
-                ? 'border-green-500/50 bg-green-500/5 shadow-2xl shadow-green-500/30'
-                : 'border-red-500/50 bg-red-500/5 shadow-2xl shadow-red-500/30'
+                  ? 'border-green-500/50 bg-green-500/5 shadow-2xl shadow-green-500/30'
+                  : 'border-red-500/50 bg-red-500/5 shadow-2xl shadow-red-500/30'
             }`}
           >
             {scanModal.mode === 'loading' && (
@@ -767,6 +996,210 @@ export default function PresensiPage() {
                 </button>
               </>
             )}
+          </div>
+        </div>
+      )}
+
+      {showPesertaModal && selectedEvent && (
+        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/80 px-4 py-6 backdrop-blur-sm">
+          <div className="flex w-full max-w-3xl max-h-[calc(100vh-3rem)] flex-col overflow-hidden rounded-3xl border border-yellow-500/20 bg-linear-to-b from-[#1a1a1a] to-[#0b0b0b] shadow-2xl shadow-black/60">
+            <div className="flex items-start justify-between gap-4 border-b border-yellow-500/15 px-5 py-4 md:px-6">
+              <div>
+                <div className="text-xs uppercase tracking-[0.3em] text-yellow-500/70">Presensi Manual</div>
+                <h3 className="mt-1 text-lg font-bold text-yellow-400 md:text-xl">Pilih Peserta</h3>
+                <p className="mt-1 text-sm text-gray-400">Klik lebih dari satu peserta, lalu presensi sekaligus dari modal ini.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowPesertaModal(false)}
+                className="rounded-full border border-white/10 bg-white/5 px-3 py-2 text-sm text-gray-300 transition hover:bg-white/10 hover:text-white"
+              >
+                Tutup
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto px-5 py-4 md:px-6">
+              <div className="sticky top-0 z-10 -mx-5 mb-4 border-b border-yellow-500/10 bg-[#111111]/95 px-5 pb-4 pt-1 backdrop-blur-sm md:-mx-6 md:px-6">
+                <form onSubmit={handleSearchPeserta} className="flex flex-col gap-3 md:flex-row">
+                  <input
+                    type="text"
+                    value={pesertaModalSearchInput}
+                    onChange={(e) => setPesertaModalSearchInput(e.target.value)}
+                    placeholder="Cari nama, kode, nomor telepon, atau alamat"
+                    className="w-full flex-1 rounded-xl border border-yellow-500/20 bg-[#0a0a0a] px-4 py-3 text-sm text-white placeholder:text-gray-500 focus:border-yellow-500 focus:ring-2 focus:ring-yellow-500/20"
+                  />
+                  <button
+                    type="submit"
+                    className="rounded-xl bg-yellow-500 px-5 py-3 text-sm font-bold text-black transition hover:bg-yellow-600"
+                  >
+                    Cari
+                  </button>
+                </form>
+              </div>
+
+              <div className="space-y-3">
+                <div className="flex items-center justify-between gap-3 text-xs text-gray-500">
+                  <div>{pesertaModalLoading ? 'Memuat data...' : `${pesertaModalTotal} peserta ditemukan`}</div>
+                  <button
+                    type="button"
+                    onClick={handleSelectVisiblePeserta}
+                    className="rounded-xl border border-yellow-500/30 bg-yellow-500/10 px-4 py-2 text-xs font-semibold text-yellow-300 transition hover:bg-yellow-500/15"
+                  >
+                    Pilih Semua Halaman Ini
+                  </button>
+                </div>
+
+                {pesertaModalLoading ? (
+                  <div className="flex min-h-64 items-center justify-center rounded-2xl border border-dashed border-yellow-500/20 bg-[#0a0a0a] text-gray-400">
+                    Memuat daftar peserta...
+                  </div>
+                ) : pesertaModalList.filter((item) => !item.status_hadir).length === 0 ? (
+                  <div className="flex min-h-64 items-center justify-center rounded-2xl border border-dashed border-yellow-500/20 bg-[#0a0a0a] text-center text-gray-400">
+                    Tidak ada peserta yang belum hadir
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {pesertaModalList
+                      .filter((item) => !item.status_hadir)
+                      .map((peserta) => {
+                        const selected = isPesertaSelected(peserta.id);
+
+                        return (
+                          <button
+                            key={peserta.id}
+                            type="button"
+                            onClick={() => togglePesertaSelection(peserta)}
+                            className={`w-full rounded-2xl border p-4 text-left transition-all duration-200 ${
+                              selected
+                                ? 'border-yellow-500/60 bg-yellow-500/10 shadow-lg shadow-yellow-500/10'
+                                : 'border-white/5 bg-[#0a0a0a] hover:border-yellow-500/30 hover:bg-yellow-500/5'
+                            }`}
+                          >
+                            <div className="flex items-start gap-3">
+                              <div className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border text-[10px] font-bold ${
+                                selected
+                                  ? 'border-yellow-400 bg-yellow-400 text-black'
+                                  : 'border-white/15 bg-white/5 text-gray-500'
+                              }`}>
+                                {selected ? '✓' : ''}
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-start justify-between gap-3">
+                                  <div className="min-w-0">
+                                    <div className="truncate text-sm font-semibold text-white">{peserta.nama}</div>
+                                    <div className="mt-1 text-sm text-gray-300">{peserta.nomor_telepon || '-'}</div>
+                                  </div>
+                                  <span className={`shrink-0 rounded-full border px-2.5 py-1 text-[11px] font-semibold ${
+                                    selected
+                                      ? 'border-yellow-500/30 bg-yellow-500/20 text-yellow-200'
+                                      : 'border-gray-500/20 bg-gray-500/10 text-gray-400'
+                                  }`}>
+                                    {selected ? 'Dipilih' : 'Pilih'}
+                                  </span>
+                                </div>
+                                <div className="mt-2 text-sm text-gray-400">
+                                  {peserta.alamat || '-'}
+                                </div>
+                              </div>
+                            </div>
+                          </button>
+                        );
+                      })}
+                  </div>
+                )}
+
+                {pesertaModalTotalPages > 1 && (
+                  <div className="flex flex-wrap items-center justify-center gap-2 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => setPesertaModalPage((prev) => Math.max(1, prev - 1))}
+                      disabled={pesertaModalPage === 1 || pesertaModalLoading}
+                      className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-gray-300 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      Sebelumnya
+                    </button>
+
+                    {Array.from({ length: pesertaModalTotalPages }, (_, index) => index + 1)
+                      .slice(Math.max(0, pesertaModalPage - 3), Math.min(pesertaModalTotalPages, pesertaModalPage + 2))
+                      .map((page) => (
+                        <button
+                          key={page}
+                          type="button"
+                          onClick={() => setPesertaModalPage(page)}
+                          className={`h-10 min-w-10 rounded-lg px-3 text-sm font-semibold transition ${
+                            pesertaModalPage === page
+                              ? 'bg-yellow-500 text-black shadow-lg shadow-yellow-500/30'
+                              : 'border border-white/10 bg-white/5 text-gray-300 hover:bg-white/10'
+                          }`}
+                        >
+                          {page}
+                        </button>
+                      ))}
+
+                    <button
+                      type="button"
+                      onClick={() => setPesertaModalPage((prev) => Math.min(pesertaModalTotalPages, prev + 1))}
+                      disabled={pesertaModalPage === pesertaModalTotalPages || pesertaModalLoading}
+                      className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-gray-300 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      Berikutnya
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="border-t border-yellow-500/15 bg-[#101010]/95 px-5 py-4 md:px-6">
+              <div className="flex flex-col gap-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <div className="text-sm font-semibold text-yellow-400">{selectedPesertaList.length} peserta terpilih</div>
+                    <div className="text-xs text-gray-500">Presensi manual hanya untuk peserta yang belum hadir.</div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleClearSelectedPeserta}
+                    className="text-xs font-semibold text-gray-400 transition hover:text-white"
+                  >
+                    Reset
+                  </button>
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  {selectedPesertaList.slice(0, 4).map((peserta) => (
+                    <span
+                      key={peserta.id}
+                      className="inline-flex items-center gap-2 rounded-full border border-yellow-500/20 bg-yellow-500/10 px-3 py-1 text-xs text-yellow-200"
+                    >
+                      <span className="max-w-45 truncate font-semibold">{peserta.nama}</span>
+                    </span>
+                  ))}
+                  {selectedPesertaList.length > 4 && (
+                    <span className="inline-flex items-center rounded-full border border-yellow-500/20 bg-white/5 px-3 py-1 text-xs text-gray-300">
+                      +{selectedPesertaList.length - 4} lainnya
+                    </span>
+                  )}
+                </div>
+
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <button
+                    type="button"
+                    onClick={handleBulkPresensi}
+                    disabled={bulkPresensiSubmitting || selectedPesertaList.length === 0}
+                    className="w-full rounded-xl bg-yellow-500 px-4 py-3 text-sm font-bold text-black transition hover:bg-yellow-600 disabled:cursor-not-allowed disabled:bg-gray-700 disabled:text-gray-400"
+                  >
+                    {bulkPresensiSubmitting ? 'Memproses...' : 'Presensi Terpilih'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowPesertaModal(false)}
+                    className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-gray-300 transition hover:bg-white/10 hover:text-white"
+                  >
+                    Tutup Modal
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       )}
