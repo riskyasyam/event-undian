@@ -497,41 +497,61 @@ export default function UndiPage() {
     }
 
     try {
-      const excelData = winners.map((winner, index) => {
-        const tipePesertaRaw = winner.peserta.tipe || winner.hadiah.tipe_peserta || '';
-        const tipePeserta =
-          tipePesertaRaw === 'JAMAAH'
-            ? 'Jamaah'
-            : tipePesertaRaw === 'PESERTA'
-            ? 'Peserta'
-            : '-';
-
-        return {
-          No: index + 1,
-          'Kode Peserta': winner.peserta.kode_unik || '-',
-          'Nama Pemenang': winner.peserta.nama,
-          'Tipe Peserta': tipePeserta,
-          'Nomor Telepon': winner.peserta.nomor_telepon || '-',
-          Alamat: winner.peserta.alamat || '-',
-          'Hadiah Dimenangkan': winner.hadiah.nama_hadiah,
-          'Waktu Undi': new Date(winner.drawn_at).toLocaleString('id-ID'),
-        };
-      });
-
-      const worksheet = XLSX.utils.json_to_sheet(excelData);
-      worksheet['!cols'] = [
-        { wch: 6 },
-        { wch: 14 },
-        { wch: 28 },
-        { wch: 14 },
-        { wch: 18 },
-        { wch: 36 },
-        { wch: 28 },
-        { wch: 24 },
-      ];
-
       const workbook = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(workbook, worksheet, 'Pemenang Undian');
+
+      const sanitizeSheetName = (name: string) =>
+        name
+          .replace(/[\\/?*\[\]:]/g, ' ')
+          .replace(/\s+/g, ' ')
+          .trim()
+          .slice(0, 31) || 'Hadiah';
+
+      const winnersByPrize = winners.reduce<Record<string, Winner[]>>((acc, winner) => {
+        const prizeName = winner.hadiah.nama_hadiah || 'Tanpa Hadiah';
+        if (!acc[prizeName]) {
+          acc[prizeName] = [];
+        }
+        acc[prizeName].push(winner);
+        return acc;
+      }, {});
+
+      const usedSheetNames = new Set<string>();
+
+      Object.entries(winnersByPrize)
+        .sort(([a], [b]) => a.localeCompare(b, 'id'))
+        .forEach(([prizeName, prizeWinners]) => {
+          const excelData = prizeWinners.map((winner, index) => {
+            return {
+              No: index + 1,
+              'Nama Pemenang': winner.peserta.nama,
+              'Nomor Telepon': winner.peserta.nomor_telepon || '-',
+              Alamat: winner.peserta.alamat || '-',
+              'Hadiah Dimenangkan': winner.hadiah.nama_hadiah,
+            };
+          });
+
+          const worksheet = XLSX.utils.json_to_sheet(excelData);
+          worksheet['!cols'] = [
+            { wch: 6 },
+            { wch: 28 },
+            { wch: 18 },
+            { wch: 36 },
+            { wch: 28 },
+          ];
+
+          const baseSheetName = sanitizeSheetName(prizeName);
+          let sheetName = baseSheetName;
+          let suffix = 2;
+
+          while (usedSheetNames.has(sheetName)) {
+            const maxBaseLength = Math.max(1, 31 - (` (${suffix})`.length));
+            sheetName = `${baseSheetName.slice(0, maxBaseLength)} (${suffix})`;
+            suffix += 1;
+          }
+
+          usedSheetNames.add(sheetName);
+          XLSX.utils.book_append_sheet(workbook, worksheet, sheetName);
+        });
 
       const today = new Date().toISOString().split('T')[0];
       const filename = `Pemenang_${selectedEvent.nama_event.replace(/\s+/g, '_')}_${today}.xlsx`;
