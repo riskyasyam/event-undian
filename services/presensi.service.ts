@@ -51,6 +51,7 @@ export async function getPresensiByEvent(
     pageSize?: number;
     all?: boolean;
     tipe?: TipePeserta;
+    search?: string;
   } = {}
 ): Promise<PresensiWithPeserta[]> {
   const isAll = options.all === true;
@@ -62,12 +63,38 @@ export async function getPresensiByEvent(
   const page = !isAll && options.page ? Math.max(1, options.page) : 1;
   const pageSize = !isAll && options.pageSize ? Math.max(1, options.pageSize) : undefined;
   const tipe = options.tipe;
+  const search = options.search?.trim();
   const skip = pageSize ? (page - 1) * pageSize : undefined;
 
   return prisma.presensi.findMany({
     where: {
       event_id: eventId,
       ...(tipe && { peserta: { tipe } }),
+      ...(search && {
+        peserta: {
+          ...(tipe && { tipe }),
+          OR: [
+            {
+              nama: {
+                contains: search,
+                mode: 'insensitive',
+              },
+            },
+            {
+              kode_unik: {
+                contains: search,
+                mode: 'insensitive',
+              },
+            },
+            {
+              nomor_telepon: {
+                contains: search,
+                mode: 'insensitive',
+              },
+            },
+          ],
+        },
+      }),
     },
     include: {
       peserta: {

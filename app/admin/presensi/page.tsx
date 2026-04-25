@@ -46,6 +46,8 @@ export default function PresensiPage() {
   const [totalPresensi, setTotalPresensi] = useState(0);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
+  const [presensiSearchInput, setPresensiSearchInput] = useState('');
+  const [presensiSearchQuery, setPresensiSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -84,6 +86,8 @@ export default function PresensiPage() {
   useEffect(() => {
     if (selectedEvent) {
       setCurrentPage(1);
+      setPresensiSearchInput('');
+      setPresensiSearchQuery('');
     }
   }, [selectedEvent?.id]);
 
@@ -91,7 +95,7 @@ export default function PresensiPage() {
     if (selectedEvent) {
       fetchPresensi();
     }
-  }, [selectedEvent, currentPage]);
+  }, [selectedEvent, currentPage, presensiSearchQuery]);
 
   useEffect(() => {
     if (!showPesertaModal || !selectedEvent) return;
@@ -164,9 +168,17 @@ export default function PresensiPage() {
     if (!selectedEvent) return;
 
     try {
-      const response = await fetch(
-        `/api/presensi/event/${selectedEvent.id}?page=${currentPage}&pageSize=${ITEMS_PER_PAGE}`
-      );
+      const query = new URLSearchParams({
+        page: String(currentPage),
+        pageSize: String(ITEMS_PER_PAGE),
+      });
+
+      const trimmedSearch = presensiSearchQuery.trim();
+      if (trimmedSearch) {
+        query.set('search', trimmedSearch);
+      }
+
+      const response = await fetch(`/api/presensi/event/${selectedEvent.id}?${query.toString()}`);
       const data = await response.json();
 
       if (data.success) {
@@ -180,6 +192,18 @@ export default function PresensiPage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleSearchPresensi = (e: React.FormEvent) => {
+    e.preventDefault();
+    setCurrentPage(1);
+    setPresensiSearchQuery(presensiSearchInput.trim());
+  };
+
+  const handleResetSearchPresensi = () => {
+    setPresensiSearchInput('');
+    setPresensiSearchQuery('');
+    setCurrentPage(1);
   };
 
   const handleSubmitPresensi = async (
@@ -828,10 +852,38 @@ export default function PresensiPage() {
       {/* Recent Presensi List */}
       <div className="bg-[#1a1a1a] rounded-lg shadow-lg overflow-hidden border border-yellow-500/20">
         <div className="px-4 md:px-6 py-4 border-b border-yellow-500/20">
-          <h2 className="text-lg md:text-xl font-bold text-yellow-500">Daftar Presensi</h2>
-          <p className="text-xs md:text-sm text-gray-400 mt-1">
-            Menampilkan {presensiList.length} dari {totalPresensi} presensi
-          </p>
+          <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+            <div>
+              <h2 className="text-lg md:text-xl font-bold text-yellow-500">Daftar Presensi</h2>
+              <p className="text-xs md:text-sm text-gray-400 mt-1">
+                Menampilkan {presensiList.length} dari {totalPresensi} presensi{presensiSearchQuery ? ' (hasil pencarian)' : ''}
+              </p>
+            </div>
+            <form onSubmit={handleSearchPresensi} className="w-full md:w-auto flex flex-col sm:flex-row gap-2">
+              <input
+                type="text"
+                value={presensiSearchInput}
+                onChange={(e) => setPresensiSearchInput(e.target.value)}
+                placeholder="Cari nama, kode, atau telepon"
+                className="w-full md:w-72 px-4 py-2.5 bg-[#0a0a0a] border border-yellow-500/20 text-white rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent placeholder-gray-500 text-sm"
+              />
+              <button
+                type="submit"
+                className="px-4 py-2.5 bg-yellow-500 hover:bg-yellow-600 text-black font-bold rounded-lg transition text-sm"
+              >
+                Cari
+              </button>
+              {presensiSearchQuery && (
+                <button
+                  type="button"
+                  onClick={handleResetSearchPresensi}
+                  className="px-4 py-2.5 bg-[#0a0a0a] border border-yellow-500/20 text-gray-300 hover:text-white hover:border-yellow-500/40 font-semibold rounded-lg transition text-sm"
+                >
+                  Reset
+                </button>
+              )}
+            </form>
+          </div>
         </div>
         
         {/* Mobile View - Cards */}

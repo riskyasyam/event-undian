@@ -787,6 +787,7 @@ export default function UndiPage() {
                                     <div key={`${winner.id}-${idx}`} className="text-sm md:text-base">
                                       <div className="font-semibold text-white text-base md:text-lg leading-snug">{idx + 1}. {winner.nama}</div>
                                       <div className="text-xs md:text-sm text-yellow-300 mt-0.5">{winner.nomor_telepon || '-'}</div>
+                                      <div className="text-xs text-gray-300 mt-0.5 wrap-break-word">{winner.alamat || '-'}</div>
                                     </div>
                                   ))}
                                 </div>
@@ -849,6 +850,7 @@ export default function UndiPage() {
                                     <div key={`${winner.id}-${idx}`} className="rounded-lg border border-yellow-500/10 bg-black/30 px-3 py-3 text-sm md:text-base">
                                       <div className="font-semibold text-white text-base md:text-lg leading-snug">{idx + 1}. {winner.nama}</div>
                                       <div className="text-yellow-300 text-xs md:text-sm mt-0.5">{winner.nomor_telepon || '-'}</div>
+                                      <div className="text-gray-300 text-xs mt-0.5 wrap-break-word">{winner.alamat || '-'}</div>
                                     </div>
                                   ))
                                 )}

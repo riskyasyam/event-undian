@@ -27,12 +27,35 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     const pageSize = Number(searchParams.get('pageSize') || '10');
     const limitParam = searchParams.get('limit');
     const limit = limitParam ? Number(limitParam) : undefined;
+    const search = (searchParams.get('search') || '').trim();
 
     const totalPresensi = await prisma.presensi.count({
       where: {
         event_id: eventId,
         peserta: {
           tipe,
+          ...(search && {
+            OR: [
+              {
+                nama: {
+                  contains: search,
+                  mode: 'insensitive',
+                },
+              },
+              {
+                kode_unik: {
+                  contains: search,
+                  mode: 'insensitive',
+                },
+              },
+              {
+                nomor_telepon: {
+                  contains: search,
+                  mode: 'insensitive',
+                },
+              },
+            ],
+          }),
         },
       },
     });
@@ -44,6 +67,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
         page: all ? undefined : page,
         pageSize: all ? undefined : pageSize,
         tipe,
+        search,
       }),
       getPresensiStats(eventId),
     ]);
